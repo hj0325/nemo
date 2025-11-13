@@ -132,12 +132,28 @@ export default function FixedRoomPage() {
         initialHtmlOffZ={pHtmlOffZ}
         initialHtmlScaleMul={pHtmlScale}
         htmlVisible={step < 2}
-        overlayImageUrl={"/2d/nemo.png"}
         overlayVisible={step >= 2}
-        overlayPos={{ x: -3.9, y: -1.8, z: -8.0 }}
+        overlayPos={{ x: -3.9, y: -4.4, z: -18.6 }}
         overlayScale={5.0}
         overlayOpacityTarget={overlayTarget}
         overlayOpacityLerp={dynamicOverlayLerp}
+        overlaySeqList={[
+          "/2d/pic/nightcity.png",
+          "/2d/pic/rainycity.png",
+          "/2d/pic/rainywindow.png",
+          "/2d/pic/christmasnight.png",
+          "/2d/pic/snowystreet.png",
+          "/2d/pic/snowynight.png",
+          "/2d/pic/autumstreet.png",
+          "/2d/pic/autumsunset.png",
+          "/2d/pic/foggyforest.png",
+          "/2d/pic/windymountine.png",
+          "/2d/pic/rainysummer.png",
+          "/2d/pic/summerriver.png",
+          "/2d/pic/summerbeach.png",
+          "/2d/pic/rainyspring.png",
+        ]}
+        overlaySlideLerp={500}
         progressTarget={progressTarget as any}
         progressLerp={dynamicProgressLerp}
         progressTrigger={step}

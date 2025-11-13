@@ -61,6 +61,12 @@ export default function Room(props) {
     overlayScale,
     overlayOpacityTarget,
     overlayOpacityLerp,
+    // Optional sequence control to change overlay image based on light path or external events
+    overlaySeqPrefix,
+    overlaySeqCount,
+    overlaySeqExt = ".png",
+    overlaySlideLerp = 500,
+    overlaySeqList,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -76,10 +82,21 @@ export default function Room(props) {
   const screenObjRef = useRef(null);
   const cssScreenRef = useRef(null);
   const screenCenterLocalRef = useRef(null);
-  // Overlay plane refs (for 2D billboard outside window)
+  // Overlay group and plane refs (for 2D billboard outside window)
+  const overlayGroupRef = useRef(null);
   const overlayPlaneRef = useRef(null);
   const overlayMatRef = useRef(null);
   const overlayTexRef = useRef(null);
+  const overlayNextPlaneRef = useRef(null);
+  const overlayNextMatRef = useRef(null);
+  const overlayNextTexRef = useRef(null);
+  const overlayIndexRef = useRef(0);
+  const overlaySlideRafRef = useRef(null);
+  const [overlayIndex, setOverlayIndex] = useState(0);
+  // Overlay local offsets the user can tune in runtime
+  const [overlayOffX, setOverlayOffX] = useState(0);
+  const [overlayOffY, setOverlayOffY] = useState(0);
+  const [overlayOffZ, setOverlayOffZ] = useState(0);
   const [htmlDist, setHtmlDist] = useState(
     typeof initialHtmlDist === "number" ? initialHtmlDist : (HTML_TUNE.axisDist || 0)
   );
@@ -219,34 +236,84 @@ export default function Room(props) {
       }
     };
 
-    // Create unlit billboard plane for 2D overlay (outside window, behind model)
+    // Create overlay group and initial plane (behind model)
     {
+      const group = new THREE.Object3D();
+      const p = overlayPos || { x: -3.9, y: -1.8, z: -50.0 };
+      group.position.set(p.x || 0, p.y || 0, p.z || 0);
+      group.visible = !!overlayVisible;
+      scene.add(group);
+      overlayGroupRef.current = group;
       const geo = new THREE.PlaneGeometry(1.6, 0.9); // ~16:9
-      const tex = overlayImageUrl ? new THREE.TextureLoader().load(overlayImageUrl) : null;
-      if (tex) {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.needsUpdate = true;
+      // Pick initial texture from explicit list, numeric sequence, or explicit single image
+      let initUrl = null;
+      const initialIndex = 0;
+      if (Array.isArray(overlaySeqList) && overlaySeqList.length > 0) {
+        overlayIndexRef.current = initialIndex;
+        initUrl = overlaySeqList[initialIndex];
+      } else if (!initUrl && typeof overlaySeqPrefix === "string" && typeof overlaySeqCount === "number") {
+        overlayIndexRef.current = initialIndex;
+        const num = String(initialIndex + 1);
+        initUrl = `${overlaySeqPrefix}${num}${overlaySeqExt}`;
+      } else {
+        initUrl = overlayImageUrl;
       }
+      // Load initial texture with fallback to /2d/nemo.png
+      const loader = new THREE.TextureLoader();
+      let tex = null;
+      const loadUrl = (url, onDone) => {
+        if (!url) {
+          onDone(null);
+          return;
+        }
+        loader.load(
+          url,
+          (t) => {
+            t.colorSpace = THREE.SRGBColorSpace;
+            t.needsUpdate = true;
+            onDone(t);
+          },
+          undefined,
+          () => {
+            // Fallback to nemo.png if provided url fails
+            loader.load(
+              "/2d/nemo.png",
+              (t2) => {
+                t2.colorSpace = THREE.SRGBColorSpace;
+                t2.needsUpdate = true;
+                onDone(t2);
+              },
+              undefined,
+              () => onDone(null)
+            );
+          }
+        );
+      };
+      // material placeholder; map set after load
       const mat = new THREE.MeshBasicMaterial({
-        map: tex || null,
+        map: null,
         transparent: true,
-        depthTest: true,   // occluded by model
+        depthTest: true,      // occluded by model
         depthWrite: true,
         toneMapped: false,
         opacity: 1.0,
       });
       const plane = new THREE.Mesh(geo, mat);
-      // Default far behind the room along -Z so it's behind the model from camera views
       plane.frustumCulled = false;
-      const p = overlayPos || { x: -3.9, y: -1.8, z: -50.0 };
-      plane.position.set(p.x || 0, p.y || 0, p.z || 0);
       const s = typeof overlayScale === "number" ? overlayScale : 1.2;
+      plane.position.set(0, 0, 0);
       plane.scale.setScalar(s);
-      plane.visible = !!overlayVisible;
-      scene.add(plane);
+      // default render order; let depth decide occlusion
+      group.add(plane);
       overlayPlaneRef.current = plane;
       overlayMatRef.current = mat;
-      overlayTexRef.current = tex;
+      // kick off texture load
+      loadUrl(initUrl || "/2d/nemo.png", (loaded) => {
+        tex = loaded;
+        overlayTexRef.current = loaded;
+        mat.map = loaded;
+        mat.needsUpdate = true;
+      });
     }
 
     // Lofi film grain overlay (CSS-based, very lightweight)
@@ -425,8 +492,8 @@ export default function Room(props) {
       controls.update();
       if (spotHelperRef.current) spotHelperRef.current.update();
       // Billboard overlay to camera
-      if (overlayPlaneRef.current && camera) {
-        overlayPlaneRef.current.lookAt(camera.position);
+      if (overlayGroupRef.current && camera) {
+        overlayGroupRef.current.lookAt(camera.position);
       }
       atmosphere.onFrame();
       // FPS meter
@@ -506,49 +573,73 @@ export default function Room(props) {
 
   // React to overlay visibility/transform
   useEffect(() => {
-    const plane = overlayPlaneRef.current;
-    if (!plane) return;
-    plane.visible = !!overlayVisible;
+    const group = overlayGroupRef.current;
+    if (!group) return;
+    group.visible = !!overlayVisible;
     if (overlayPos && typeof overlayPos === "object") {
       const { x, y, z } = overlayPos;
-      plane.position.set(
-        typeof x === "number" ? x : plane.position.x,
-        typeof y === "number" ? y : plane.position.y,
-        typeof z === "number" ? z : plane.position.z
+      group.position.set(
+        (typeof x === "number" ? x : group.position.x) + (overlayOffX || 0),
+        (typeof y === "number" ? y : group.position.y) + (overlayOffY || 0),
+        (typeof z === "number" ? z : group.position.z) + (overlayOffZ || 0)
       );
     }
     if (typeof overlayScale === "number") {
-      plane.scale.setScalar(overlayScale);
+      if (overlayPlaneRef.current) overlayPlaneRef.current.scale.setScalar(overlayScale);
+      if (overlayNextPlaneRef.current) overlayNextPlaneRef.current.scale.setScalar(overlayScale);
     }
-  }, [overlayVisible, overlayPos, overlayScale]);
+  }, [overlayVisible, overlayPos, overlayScale, overlayOffX, overlayOffY, overlayOffZ]);
 
   // React to overlay image URL changes
   useEffect(() => {
-    const mat = overlayMatRef.current;
-    if (!mat) return;
-    if (overlayTexRef.current && overlayTexRef.current.dispose) {
-      overlayTexRef.current.dispose();
-      overlayTexRef.current = null;
-    }
-    if (overlayImageUrl) {
-      const tex = new THREE.TextureLoader().load(overlayImageUrl);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.needsUpdate = true;
-      overlayTexRef.current = tex;
-      mat.map = tex;
-      mat.needsUpdate = true;
-    } else {
-      mat.map = null;
-      mat.needsUpdate = true;
-    }
+    if (!overlayImageUrl) return;
+    const group = overlayGroupRef.current;
+    const currPlane = overlayPlaneRef.current;
+    const currMat = overlayMatRef.current;
+    if (!group || !currPlane || !currMat) return;
+    // cross-fade swap to new image (no slide for explicit URL changes)
+    const tex = new THREE.TextureLoader().load(overlayImageUrl, () => {
+      const nextMat = new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, depthTest: true, depthWrite: true, toneMapped: false, opacity: 0.0,
+      });
+      const nextPlane = new THREE.Mesh(currPlane.geometry, nextMat);
+      nextPlane.position.copy(currPlane.position);
+      nextPlane.scale.copy(currPlane.scale);
+      // default render order
+      group.add(nextPlane);
+      const startAlpha = currMat.opacity ?? 1.0;
+      const endAlpha = startAlpha;
+      const t0 = performance.now();
+      const dur = Math.max(150, overlaySlideLerp || 500);
+      const anim = (now) => {
+        const u = Math.min(1, (now - t0) / dur);
+        const s = u * u * (3 - 2 * u);
+        const fade = 1.0;
+        currMat.opacity = (1 - s) * fade * startAlpha;
+        nextMat.opacity = s * fade * endAlpha;
+        currMat.needsUpdate = true;
+        nextMat.needsUpdate = true;
+        if (u < 1) {
+          requestAnimationFrame(anim);
+        } else {
+          group.remove(currPlane);
+          currMat.dispose && currMat.dispose();
+          overlayPlaneRef.current = nextPlane;
+          overlayMatRef.current = nextMat;
+          overlayTexRef.current = tex;
+        }
+      };
+      requestAnimationFrame(anim);
+    });
   }, [overlayImageUrl]);
 
   // Smoothly drive overlay opacity to a target [0..1]
   useEffect(() => {
     const mat = overlayMatRef.current;
-    if (!mat) return;
+    const matN = overlayNextMatRef.current;
+    if (!mat && !matN) return;
     if (overlayOpacityTarget === undefined || overlayOpacityTarget === null) return;
-    const start = typeof mat.opacity === "number" ? mat.opacity : 1.0;
+    const start = typeof (mat ? mat.opacity : 1.0) === "number" ? (mat ? mat.opacity : 1.0) : 1.0;
     const end = THREE.MathUtils.clamp(overlayOpacityTarget, 0, 1);
     if (Math.abs(end - start) < 1e-6) return;
     let raf = null;
@@ -557,13 +648,90 @@ export default function Room(props) {
     const step = (now) => {
       const u = Math.min(1, (now - t0) / dur);
       const s = u * u * (3 - 2 * u);
-      mat.opacity = start + (end - start) * s;
-      mat.needsUpdate = true;
+      const a = start + (end - start) * s;
+      if (mat) { mat.opacity = a; mat.needsUpdate = true; }
+      if (matN) { matN.opacity = a; matN.needsUpdate = true; }
       if (u < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => raf && cancelAnimationFrame(raf);
   }, [overlayOpacityTarget, overlayOpacityLerp]);
+
+  // If a sequence/list is provided, update overlay image index based on UI overlayIndex (step >= 2)
+  useEffect(() => {
+    const useList = Array.isArray(overlaySeqList) && overlaySeqList.length > 0;
+    const listCount = useList ? overlaySeqList.length : (typeof overlaySeqCount === "number" ? overlaySeqCount : 0);
+    if (!useList && !overlaySeqPrefix) return;
+    if (!overlayGroupRef.current) return;
+    if (!overlayVisible) return;
+    const idx = Math.max(0, Math.min(Math.max(1, listCount) - 1, Math.floor(overlayIndex)));
+    if (idx === overlayIndexRef.current) return;
+    // start slide transition to new index
+    const currPlane = overlayPlaneRef.current;
+    const currMat = overlayMatRef.current;
+    const group = overlayGroupRef.current;
+    if (!currPlane || !currMat || !group) { overlayIndexRef.current = idx; return; }
+    const url = useList ? overlaySeqList[idx] : `${overlaySeqPrefix}${String(idx + 1)}${overlaySeqExt}`;
+    const loader = new THREE.TextureLoader();
+    loader.load(url, (tex) => {
+      // Pure crossfade (no slide)
+      const nextMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: true, toneMapped: false, opacity: 0.0 });
+      const nextPlane = new THREE.Mesh(currPlane.geometry, nextMat);
+      nextPlane.position.copy(currPlane.position);
+      nextPlane.scale.copy(currPlane.scale);
+      group.add(nextPlane);
+      overlayNextPlaneRef.current = nextPlane;
+      overlayNextMatRef.current = nextMat;
+      const startOpacity = overlayMatRef.current ? overlayMatRef.current.opacity : 1.0;
+      const t0 = performance.now();
+      const dur = Math.max(150, overlaySlideLerp || 500);
+      const animate = (now) => {
+        const u = Math.min(1, (now - t0) / dur);
+        const w = u * u * (3 - 2 * u); // smoothstep
+        if (overlayMatRef.current) {
+          overlayMatRef.current.opacity = (1 - w) * startOpacity;
+          overlayMatRef.current.needsUpdate = true;
+        }
+        if (overlayNextMatRef.current) {
+          overlayNextMatRef.current.opacity = w;
+          overlayNextMatRef.current.needsUpdate = true;
+        }
+        if (u < 1) {
+          overlaySlideRafRef.current = requestAnimationFrame(animate);
+        } else {
+          // finalize
+          if (overlayPlaneRef.current) {
+            group.remove(overlayPlaneRef.current);
+            overlayMatRef.current && overlayMatRef.current.dispose && overlayMatRef.current.dispose();
+            overlayTexRef.current && overlayTexRef.current.dispose && overlayTexRef.current.dispose();
+          }
+          const newPlane = overlayNextPlaneRef.current;
+          const newMat = overlayNextMatRef.current;
+          overlayPlaneRef.current = newPlane || overlayPlaneRef.current;
+          overlayMatRef.current = newMat || overlayMatRef.current;
+          overlayTexRef.current = tex;
+          overlayNextPlaneRef.current = null;
+          overlayNextMatRef.current = null;
+          overlayIndexRef.current = idx;
+        }
+      };
+      overlaySlideRafRef.current = requestAnimationFrame(animate);
+    }, undefined, (err) => {
+      // If the target image is missing, keep the current one and do not swap.
+      // Mark index as unchanged; next valid index change will try again.
+      // console.warn("Overlay sequence image failed to load:", url, err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    overlayIndex,
+    overlayVisible,
+    (Array.isArray(overlaySeqList) ? overlaySeqList.length : 0),
+    overlaySeqPrefix,
+    overlaySeqCount,
+    overlaySeqExt,
+    overlayScale,
+    overlaySlideLerp,
+  ]);
 
   // Live update of HTML position when slider changes
   useEffect(() => {
@@ -1144,6 +1312,114 @@ export default function Room(props) {
             style={{ width: 220 }}
           />
           <span style={{ color: "#bfc3ca", fontSize: 12 }}>{htmlDist.toFixed(3)}</span>
+        </div>
+      )}
+      {/* Overlay position fine-tune sliders (XYZ) */}
+      {overlayVisible && (
+        <div
+          style={{
+            position: "fixed",
+            top: showPathSlider ? 96 : 54,
+            right: 14,
+            zIndex: 70,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            background: "rgba(17,19,24,.6)",
+            border: "1px solid #23262d",
+            borderRadius: 10,
+            padding: "10px 12px",
+            width: 260,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 16 }}>X</span>
+            <input
+              type="range"
+              min={-40}
+              max={40}
+              step={0.1}
+              value={overlayOffX}
+              onChange={(e) => setOverlayOffX(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 64, textAlign: "right" }}>{overlayOffX.toFixed(1)}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 16 }}>Y</span>
+            <input
+              type="range"
+              min={-40}
+              max={40}
+              step={0.1}
+              value={overlayOffY}
+              onChange={(e) => setOverlayOffY(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 64, textAlign: "right" }}>{overlayOffY.toFixed(1)}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 16 }}>Z</span>
+            <input
+              type="range"
+              min={-80}
+              max={80}
+              step={0.1}
+              value={overlayOffZ}
+              onChange={(e) => setOverlayOffZ(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ color: "#bfc3ca", fontSize: 12, width: 64, textAlign: "right" }}>{overlayOffZ.toFixed(1)}</span>
+          </div>
+          <button
+            onClick={() => { setOverlayOffX(0); setOverlayOffY(0); setOverlayOffZ(0); }}
+            style={{
+              marginTop: 4,
+              padding: "6px 8px",
+              borderRadius: 8,
+              border: "1px solid #23262d",
+              background: "#111318",
+              color: "#e5e7eb",
+              cursor: "pointer",
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      )}
+      {/* Overlay sequence slider (top) */}
+      {overlayVisible && ((Array.isArray(overlaySeqList) && overlaySeqList.length > 0) || (typeof overlaySeqCount === "number" && overlaySeqCount > 0)) && (
+        <div
+          style={{
+            position: "fixed",
+            top: showPathSlider ? 52 : 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 70,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            background: "rgba(17,19,24,.6)",
+            border: "1px solid #23262d",
+            borderRadius: 10,
+            padding: "8px 12px",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <span style={{ color: "#bfc3ca", fontSize: 12, minWidth: 60, textAlign: "right" }}>Overlay</span>
+          <input
+            type="range"
+            min={1}
+            max={Array.isArray(overlaySeqList) ? overlaySeqList.length : Math.max(1, overlaySeqCount || 1)}
+            step={1}
+            value={overlayIndex + 1}
+            onChange={(e) => setOverlayIndex(Math.max(0, (parseInt(e.target.value, 10) || 1) - 1))}
+            style={{ width: 280 }}
+          />
+          <span style={{ color: "#bfc3ca", fontSize: 12 }}>
+            {`${overlayIndex + 1}/${Array.isArray(overlaySeqList) ? overlaySeqList.length : Math.max(1, overlaySeqCount || 1)}`}
+          </span>
         </div>
       )}
       {showHtmlSliders && (

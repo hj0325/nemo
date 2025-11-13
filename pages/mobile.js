@@ -72,16 +72,26 @@ function GradientControl({ label, onChange, quantize = null, colorA = "#8b5cf6",
 export default function MobileController() {
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  const [step, setStep] = useState(0);
   useEffect(() => {
     const socket = io({ path: "/api/socketio" });
     socketRef.current = socket;
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
+    const onNext = () => setStep((s) => Math.min(3, s + 1));
+    const onPrev = () => setStep((s) => Math.max(0, s - 1));
+    const onSetStep = (v) => setStep(() => Math.max(0, Math.min(3, Math.floor(v || 0))));
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("next", onNext);
+    socket.on("prev", onPrev);
+    socket.on("setStep", onSetStep);
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("next", onNext);
+      socket.off("prev", onPrev);
+      socket.off("setStep", onSetStep);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -105,49 +115,106 @@ export default function MobileController() {
       <div style={{ height: 8, color: connected ? "#10b981" : "#ef4444", fontSize: 12 }}>
         {connected ? "connected" : "disconnected"}
       </div>
-      {/* Controller A: Progress */}
-      <GradientControl
-        label="A"
-        colorA="#8b5cf6"
-        colorB="#06b6d4"
-        onChange={(v) => emit("progress", v)}
-      />
-      {/* Explicit Prev / Next buttons (not abstract) */}
-      <div style={{ display: "flex", gap: 12 }}>
-        <button
-          onClick={() => emit("prev")}
-          style={{
-            flex: 1,
-            padding: "14px 16px",
-            borderRadius: 12,
-            border: "1px solid #23262d",
-            background: "linear-gradient(180deg,#1a1f2e,#111318)",
-            color: "#e5e7eb",
-          }}
-        >
-          이전
-        </button>
-        <button
-          onClick={() => emit("next")}
-          style={{
-            flex: 1,
-            padding: "14px 16px",
-            borderRadius: 12,
-            border: "1px solid #23262d",
-            background: "linear-gradient(180deg,#1a1f2e,#111318)",
-            color: "#e5e7eb",
-          }}
-        >
-          다음
-        </button>
-      </div>
-      {/* Controller C: Overlay opacity (fade) */}
-      <GradientControl
-        label="C"
-        colorA="#f59e0b"
-        colorB="#ef4444"
-        onChange={(v) => emit("overlayOpacity", v)}
-      />
+      {/* Step 0: Next only (desktop timing) */}
+      {step === 0 && (
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={() => emit("next")}
+            style={{
+              flex: 1,
+              padding: "16px 18px",
+              borderRadius: 12,
+              border: "1px solid #23262d",
+              background: "linear-gradient(180deg,#1a1f2e,#111318)",
+              color: "#e5e7eb",
+            }}
+          >
+            다음
+          </button>
+        </div>
+      )}
+      {/* Step 1: Light Path gradient + prev/next */}
+      {step === 1 && (
+        <>
+          <GradientControl
+            label="Light Path"
+            colorA="#8b5cf6"
+            colorB="#06b6d4"
+            onChange={(v) => emit("progress", v)}
+          />
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => emit("prev")}
+              style={{
+                flex: 1,
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: "1px solid #23262d",
+                background: "linear-gradient(180deg,#1a1f2e,#111318)",
+                color: "#e5e7eb",
+              }}
+            >
+              이전
+            </button>
+            <button
+              onClick={() => emit("next")}
+              style={{
+                flex: 1,
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: "1px solid #23262d",
+                background: "linear-gradient(180deg,#1a1f2e,#111318)",
+                color: "#e5e7eb",
+              }}
+            >
+              다음
+            </button>
+          </div>
+        </>
+      )}
+      {/* Step 2+: Overlay gradient */}
+      {step >= 2 && (
+        <>
+          <GradientControl
+            label="Fade"
+            colorA="#f59e0b"
+            colorB="#ef4444"
+            onChange={(v) => emit("overlayOpacity", v)}
+          />
+          <div style={{ display: "flex", gap: 12 }}>
+            {step > 0 && (
+              <button
+                onClick={() => emit("prev")}
+                style={{
+                  flex: 1,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: "1px solid #23262d",
+                  background: "linear-gradient(180deg,#1a1f2e,#111318)",
+                  color: "#e5e7eb",
+                }}
+              >
+                이전
+              </button>
+            )}
+            {step < 3 && (
+              <button
+                onClick={() => emit("next")}
+                style={{
+                  flex: 1,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: "1px solid #23262d",
+                  background: "linear-gradient(180deg,#1a1f2e,#111318)",
+                  color: "#e5e7eb",
+                }}
+              >
+                다음
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
