@@ -46,6 +46,19 @@ export default function Room(props) {
     disableColorMapping,
     pinIntensityTarget,
     pinIntensityLerp,
+    // External HTML screen control (optional)
+    initialHtmlDist,
+    initialHtmlOffX,
+    initialHtmlOffY,
+    initialHtmlOffZ,
+    initialHtmlScaleMul,
+    // Control CSS3D HTML visibility
+    htmlVisible,
+    // Overlay billboard plane (unlit) - outside window
+    overlayImageUrl,
+    overlayVisible,
+    overlayPos,
+    overlayScale,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -61,11 +74,19 @@ export default function Room(props) {
   const screenObjRef = useRef(null);
   const cssScreenRef = useRef(null);
   const screenCenterLocalRef = useRef(null);
-  const [htmlDist, setHtmlDist] = useState(HTML_TUNE.axisDist || 0);
-  const [htmlOffX, setHtmlOffX] = useState(0);
-  const [htmlOffY, setHtmlOffY] = useState(0);
-  const [htmlOffZ, setHtmlOffZ] = useState(0);
-  const [htmlScaleMul, setHtmlScaleMul] = useState(1);
+  // Overlay plane refs (for 2D billboard outside window)
+  const overlayPlaneRef = useRef(null);
+  const overlayMatRef = useRef(null);
+  const overlayTexRef = useRef(null);
+  const [htmlDist, setHtmlDist] = useState(
+    typeof initialHtmlDist === "number" ? initialHtmlDist : (HTML_TUNE.axisDist || 0)
+  );
+  const [htmlOffX, setHtmlOffX] = useState(typeof initialHtmlOffX === "number" ? initialHtmlOffX : 0);
+  const [htmlOffY, setHtmlOffY] = useState(typeof initialHtmlOffY === "number" ? initialHtmlOffY : 0);
+  const [htmlOffZ, setHtmlOffZ] = useState(typeof initialHtmlOffZ === "number" ? initialHtmlOffZ : 0);
+  const [htmlScaleMul, setHtmlScaleMul] = useState(
+    typeof initialHtmlScaleMul === "number" ? initialHtmlScaleMul : 1
+  );
 
   const [controlsOpen, setControlsOpen] = useState(true);
   const [camX, setCamX] = useState(initialCamera?.x ?? -2.0);
@@ -162,6 +183,69 @@ export default function Room(props) {
     // Capture initial camera as preset 3 snapshot
     setPreset3Cam({ x: camX, y: camY, z: camZ });
 
+    // Lightweight FPS meter (no external deps)
+    const fpsEl = document.createElement("div");
+    fpsEl.style.position = "absolute";
+    fpsEl.style.top = "8px";
+    fpsEl.style.left = "8px";
+    fpsEl.style.padding = "2px 6px";
+    fpsEl.style.borderRadius = "6px";
+    fpsEl.style.fontSize = "11px";
+    fpsEl.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    fpsEl.style.background = "rgba(17,19,24,.6)";
+    fpsEl.style.border = "1px solid #23262d";
+    fpsEl.style.color = "#bfc3ca";
+    fpsEl.style.zIndex = "5";
+    fpsEl.textContent = "FPS: --";
+    container.appendChild(fpsEl);
+    let fpsFrames = 0;
+    let fpsLast = performance.now();
+    let fpsAccum = 0;
+    let fpsCount = 0;
+    const updateFps = (dt) => {
+      fpsFrames++;
+      fpsAccum += dt;
+      fpsCount++;
+      // update every ~250ms for stability
+      if (performance.now() - fpsLast >= 250) {
+        const avgDt = fpsAccum / Math.max(1, fpsCount);
+        const fps = Math.round(1000 / Math.max(1e-3, avgDt));
+        fpsEl.textContent = `FPS: ${fps}`;
+        fpsLast = performance.now();
+        fpsAccum = 0;
+        fpsCount = 0;
+      }
+    };
+
+    // Create unlit billboard plane for 2D overlay (outside window, behind model)
+    {
+      const geo = new THREE.PlaneGeometry(1.6, 0.9); // ~16:9
+      const tex = overlayImageUrl ? new THREE.TextureLoader().load(overlayImageUrl) : null;
+      if (tex) {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+      }
+      const mat = new THREE.MeshBasicMaterial({
+        map: tex || null,
+        transparent: true,
+        depthTest: true,   // occluded by model
+        depthWrite: true,
+        toneMapped: false,
+      });
+      const plane = new THREE.Mesh(geo, mat);
+      // Default far behind the room along -Z so it's behind the model from camera views
+      plane.frustumCulled = false;
+      const p = overlayPos || { x: -3.9, y: -1.8, z: -50.0 };
+      plane.position.set(p.x || 0, p.y || 0, p.z || 0);
+      const s = typeof overlayScale === "number" ? overlayScale : 1.2;
+      plane.scale.setScalar(s);
+      plane.visible = !!overlayVisible;
+      scene.add(plane);
+      overlayPlaneRef.current = plane;
+      overlayMatRef.current = mat;
+      overlayTexRef.current = tex;
+    }
+
     // Lofi film grain overlay (CSS-based, very lightweight)
     const makeGrainDataUrl = () => {
       const s = 64;
@@ -206,10 +290,21 @@ export default function Room(props) {
         spotRef.current = spot;
         spotHelperRef.current = spotHelper;
         pinRef.current = pin;
-        // Attach HTML to monitor screen if detected
-        if (screen && cssRendererRef.current) {
+        // Attach HTML to monitor screen if detected, else fall back to a virtual anchor
+        if (cssRendererRef.current) {
           // eslint-disable-next-line no-console
-          console.log("Attaching HTML to screen:", screen.name);
+          console.log("Attaching HTML to screen:", screen ? screen.name : "(virtual anchor)");
+          let anchor = screen;
+          let isVirtual = false;
+          if (!anchor) {
+            isVirtual = true;
+            const virtual = new THREE.Object3D();
+            virtual.name = "VirtualScreenAnchor";
+            virtual.position.set(0.4, 1.0, 0.2);
+            virtual.rotation.y = Math.PI;
+            scene.add(virtual);
+            anchor = virtual;
+          }
           const iframe = document.createElement("iframe");
           iframe.setAttribute("title", "screen");
           iframe.style.border = "0";
@@ -280,14 +375,14 @@ export default function Room(props) {
     </div>
   </body>
   </html>`;
-          // Build CSS3D object and attach directly to the screen in local space
+          // Build CSS3D object and attach in local space of anchor
           const cssObj = new CSS3DObject(iframe);
-          const bbox = new THREE.Box3().setFromObject(screen);
+          const bbox = new THREE.Box3().setFromObject(anchor);
           const size = new THREE.Vector3();
           const centerWorld = new THREE.Vector3();
           bbox.getSize(size);
           bbox.getCenter(centerWorld);
-          const centerLocal = screen.worldToLocal(centerWorld.clone());
+          const centerLocal = anchor.worldToLocal(centerWorld.clone());
           cssObj.position.copy(centerLocal);
           cssObj.position.x += HTML_TUNE.offsetX + (htmlOffset?.x || 0) + htmlOffX;
           cssObj.position.y += HTML_TUNE.offsetY + (htmlOffset?.y || 0) + htmlOffY;
@@ -304,13 +399,17 @@ export default function Room(props) {
               cssObj.position.add(dir);
             }
           }
-          // Heuristic scale: map ~200 CSS px to screen width in world units
-          const s = THREE.MathUtils.clamp((size.x / 200) || 0.005, 0.002, 0.02) * HTML_TUNE.scaleMul * htmlScaleMul;
+          // Heuristic scale: map ~200 CSS px to screen width; fallback for virtual anchor
+          let s = THREE.MathUtils.clamp((size.x / 200) || 0.005, 0.002, 0.02) * HTML_TUNE.scaleMul * htmlScaleMul;
+          if (!Number.isFinite(size.x) || size.x < 1e-4 || isVirtual) {
+            s = 0.008 * (HTML_TUNE.scaleMul || 1) * (htmlScaleMul || 1);
+          }
           cssObj.scale.setScalar(s);
           cssObj.rotation.y = THREE.MathUtils.degToRad(HTML_TUNE.rotYDeg);
-          screen.add(cssObj);
+          cssObj.visible = htmlVisible !== false; // default true; hide when explicitly false
+          anchor.add(cssObj);
           // save refs for live updates
-          screenObjRef.current = screen;
+          screenObjRef.current = anchor;
           cssScreenRef.current = cssObj;
           screenCenterLocalRef.current = centerLocal.clone();
         }
@@ -322,7 +421,17 @@ export default function Room(props) {
       raf = requestAnimationFrame(tick);
       controls.update();
       if (spotHelperRef.current) spotHelperRef.current.update();
+      // Billboard overlay to camera
+      if (overlayPlaneRef.current && camera) {
+        overlayPlaneRef.current.lookAt(camera.position);
+      }
       atmosphere.onFrame();
+      // FPS meter
+      {
+        const now = performance.now();
+        updateFps(now - (tick.prevTime || now));
+        tick.prevTime = now;
+      }
       renderer.render(scene, camera);
       if (cssRendererRef.current) cssRendererRef.current.render(scene, camera);
     };
@@ -345,6 +454,17 @@ export default function Room(props) {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       disposeEnv();
+      // Cleanup overlay plane
+      if (overlayPlaneRef.current) {
+        if (overlayPlaneRef.current.parent) overlayPlaneRef.current.parent.remove(overlayPlaneRef.current);
+        overlayPlaneRef.current.geometry && overlayPlaneRef.current.geometry.dispose();
+      }
+      if (overlayMatRef.current) {
+        overlayMatRef.current.dispose();
+      }
+      if (overlayTexRef.current && overlayTexRef.current.dispose) {
+        overlayTexRef.current.dispose();
+      }
       atmosphere.dispose();
       controls.dispose();
       if (cssRendererRef.current && cssRendererRef.current.domElement && cssRendererRef.current.domElement.parentNode) {
@@ -357,8 +477,68 @@ export default function Room(props) {
         const el = rendererRef.current.domElement;
         if (el && el.parentNode) el.parentNode.removeChild(el);
       }
+      if (fpsEl && fpsEl.parentNode) fpsEl.parentNode.removeChild(fpsEl);
     };
   }, []);
+
+  // Allow external page control to drive HTML params (if provided)
+  useEffect(() => {
+    if (typeof initialHtmlDist === "number") setHtmlDist(initialHtmlDist);
+  }, [initialHtmlDist]);
+  useEffect(() => {
+    if (typeof initialHtmlOffX === "number") setHtmlOffX(initialHtmlOffX);
+    if (typeof initialHtmlOffY === "number") setHtmlOffY(initialHtmlOffY);
+    if (typeof initialHtmlOffZ === "number") setHtmlOffZ(initialHtmlOffZ);
+  }, [initialHtmlOffX, initialHtmlOffY, initialHtmlOffZ]);
+  useEffect(() => {
+    if (typeof initialHtmlScaleMul === "number") setHtmlScaleMul(initialHtmlScaleMul);
+  }, [initialHtmlScaleMul]);
+
+  // React to htmlVisible
+  useEffect(() => {
+    const cssObj = cssScreenRef.current;
+    if (!cssObj) return;
+    cssObj.visible = htmlVisible !== false;
+  }, [htmlVisible]);
+
+  // React to overlay visibility/transform
+  useEffect(() => {
+    const plane = overlayPlaneRef.current;
+    if (!plane) return;
+    plane.visible = !!overlayVisible;
+    if (overlayPos && typeof overlayPos === "object") {
+      const { x, y, z } = overlayPos;
+      plane.position.set(
+        typeof x === "number" ? x : plane.position.x,
+        typeof y === "number" ? y : plane.position.y,
+        typeof z === "number" ? z : plane.position.z
+      );
+    }
+    if (typeof overlayScale === "number") {
+      plane.scale.setScalar(overlayScale);
+    }
+  }, [overlayVisible, overlayPos, overlayScale]);
+
+  // React to overlay image URL changes
+  useEffect(() => {
+    const mat = overlayMatRef.current;
+    if (!mat) return;
+    if (overlayTexRef.current && overlayTexRef.current.dispose) {
+      overlayTexRef.current.dispose();
+      overlayTexRef.current = null;
+    }
+    if (overlayImageUrl) {
+      const tex = new THREE.TextureLoader().load(overlayImageUrl);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      overlayTexRef.current = tex;
+      mat.map = tex;
+      mat.needsUpdate = true;
+    } else {
+      mat.map = null;
+      mat.needsUpdate = true;
+    }
+  }, [overlayImageUrl]);
 
   // Live update of HTML position when slider changes
   useEffect(() => {
@@ -368,9 +548,9 @@ export default function Room(props) {
     if (!screen || !cssObj || !centerLocal) return;
     // reset to base
     cssObj.position.copy(centerLocal);
-    cssObj.position.x += HTML_TUNE.offsetX + (htmlOffset?.x || 0);
-    cssObj.position.y += HTML_TUNE.offsetY + (htmlOffset?.y || 0);
-    cssObj.position.z += HTML_TUNE.offsetZ + (htmlOffset?.z || 0);
+    cssObj.position.x += HTML_TUNE.offsetX + (htmlOffset?.x || 0) + (htmlOffX || 0);
+    cssObj.position.y += HTML_TUNE.offsetY + (htmlOffset?.y || 0) + (htmlOffY || 0);
+    cssObj.position.z += HTML_TUNE.offsetZ + (htmlOffset?.z || 0) + (htmlOffZ || 0);
     const dir = new THREE.Vector3(
       HTML_TUNE.axisX || 0,
       HTML_TUNE.axisY || 0,
@@ -931,8 +1111,8 @@ export default function Room(props) {
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 16, minWidth: 70, textAlign: "right" }}>HTML Pos</span>
           <input
             type="range"
-            min={-0.5}
-            max={1}
+            min={-10}
+            max={20}
             step={0.001}
             value={htmlDist}
             onChange={(e) => setHtmlDist(parseFloat(e.target.value))}
@@ -960,13 +1140,13 @@ export default function Room(props) {
           }}
         >
           <span style={{ color: "#bfc3ca", fontSize: 12 }}>HTML X</span>
-          <input type="range" min={-2} max={2} step={0.001} value={htmlOffX} onChange={(e) => setHtmlOffX(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <input type="range" min={-40} max={40} step={0.001} value={htmlOffX} onChange={(e) => setHtmlOffX(parseFloat(e.target.value))} style={{ width: 160 }} />
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Y</span>
-          <input type="range" min={-2} max={2} step={0.001} value={htmlOffY} onChange={(e) => setHtmlOffY(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <input type="range" min={-40} max={40} step={0.001} value={htmlOffY} onChange={(e) => setHtmlOffY(parseFloat(e.target.value))} style={{ width: 160 }} />
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Z</span>
-          <input type="range" min={-2} max={2} step={0.001} value={htmlOffZ} onChange={(e) => setHtmlOffZ(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <input type="range" min={-40} max={40} step={0.001} value={htmlOffZ} onChange={(e) => setHtmlOffZ(parseFloat(e.target.value))} style={{ width: 160 }} />
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 12 }}>Scale</span>
-          <input type="range" min={0.2} max={4} step={0.001} value={htmlScaleMul} onChange={(e) => setHtmlScaleMul(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <input type="range" min={0.2} max={80} step={0.001} value={htmlScaleMul} onChange={(e) => setHtmlScaleMul(parseFloat(e.target.value))} style={{ width: 160 }} />
         </div>
       )}
       {!hideUI && (
