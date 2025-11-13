@@ -49,6 +49,7 @@ export default function FixedRoomPage() {
         progressLerp={900}
         progressTrigger={step}
         initialProgress={0.538}
+        disableColorMapping={step === 0}
         initialFov={28}
         hideUI={true}
         showPathSlider={step > 0}

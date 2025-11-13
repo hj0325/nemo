@@ -41,6 +41,7 @@ export default function Room(props) {
     progressLerp,
     progressTrigger,
     initialProgress,
+    disableColorMapping,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -526,6 +527,14 @@ export default function Room(props) {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
+    // Landing 등 컬러 비적용 구간: 중립 톤으로 고정
+    if (disableColorMapping) {
+      const ambLight = scene.children.find((c) => c.isLight && c.type === "AmbientLight");
+      if (ambLight) ambLight.color.set("#ffffff");
+      scene.background = new THREE.Color(0xf2f2f2);
+      if (spotRef.current) spotRef.current.color.set("#ffffff");
+      return;
+    }
     // compute progress from current X/Z
     let p = 0.0;
     if (Math.abs(lightZ - PATH.zStart) < Math.abs(PATH.zEnd - PATH.zStart) * 0.25) {
