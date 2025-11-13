@@ -24,7 +24,24 @@ const HTML_TUNE = {
 };
 
 export default function Room(props) {
-  const { initialCamera, initialLight, initialFov, hideUI, showPathSlider, htmlOffset, zoomOnly, showHtmlSliders } = props || {};
+  const {
+    initialCamera,
+    initialLight,
+    initialFov,
+    hideUI,
+    showPathSlider,
+    htmlOffset,
+    zoomOnly,
+    showHtmlSliders,
+    cameraTarget,
+    cameraLerp,
+    lightTarget,
+    lightLerp,
+    progressTarget,
+    progressLerp,
+    progressTrigger,
+    initialProgress,
+  } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
@@ -59,7 +76,9 @@ export default function Room(props) {
   const [lightZ, setLightZ] = useState(initialLight?.z ?? -27.2);
   const [preset3Cam, setPreset3Cam] = useState(null);
   // Path slider state (0..1)
-  const [lightProgress, setLightProgress] = useState(0.0);
+  const [lightProgress, setLightProgress] = useState(
+    typeof initialProgress === "number" ? initialProgress : 0.0
+  );
   // Path definition
   const PATH = useMemo(() => ({ xMin: -34.8, xMax: 3.3, zStart: -22.7, zEnd: -50.0 }), []);
 
@@ -99,9 +118,16 @@ export default function Room(props) {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.enableZoom = zoomOnly ? true : enableZoom;
-    controls.enablePan = zoomOnly ? false : enablePan;
-    controls.enableRotate = zoomOnly ? false : true;
+    if (props.staticView) {
+      controls.enabled = false;
+      controls.enableZoom = false;
+      controls.enablePan = false;
+      controls.enableRotate = false;
+    } else {
+      controls.enableZoom = zoomOnly ? true : enableZoom;
+      controls.enablePan = zoomOnly ? false : enablePan;
+      controls.enableRotate = zoomOnly ? false : true;
+    }
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
@@ -383,11 +409,93 @@ export default function Room(props) {
       controls.minPolarAngle = 0.01;
       controls.maxPolarAngle = Math.PI - 0.01;
     }
-    controls.enableZoom = zoomOnly ? true : enableZoom;
-    controls.enablePan = zoomOnly ? false : enablePan;
-    controls.enableRotate = zoomOnly ? false : true;
+    if (props.staticView) {
+      controls.enabled = false;
+      controls.enableZoom = false;
+      controls.enablePan = false;
+      controls.enableRotate = false;
+    } else {
+      controls.enableZoom = zoomOnly ? true : enableZoom;
+      controls.enablePan = zoomOnly ? false : enablePan;
+      controls.enableRotate = zoomOnly ? false : true;
+    }
     controls.update();
-  }, [camX, camY, camZ, lockDistance, lockTilt, enableZoom, enablePan, zoomOnly]);
+  }, [camX, camY, camZ, lockDistance, lockTilt, enableZoom, enablePan, zoomOnly, props.staticView]);
+
+  // Smooth camera move to external target (used by /room page buttons)
+  useEffect(() => {
+    if (!cameraRef.current || !controlsRef.current) return;
+    const target = (props && props.cameraTarget) || null;
+    if (!target) return;
+    const cam = cameraRef.current;
+    const controls = controlsRef.current;
+    const start = cam.position.clone();
+    const end = new THREE.Vector3(
+      target.x ?? start.x,
+      target.y ?? start.y,
+      target.z ?? start.z
+    );
+    let raf = null;
+    const t0 = performance.now();
+    const dur = Math.max(100, (props && props.cameraLerp) || 900);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / dur);
+      const s = u * u * (3 - 2 * u);
+      cam.position.lerpVectors(start, end, s);
+      cam.updateProjectionMatrix();
+      if (controls) {
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [props && props.cameraTarget, props && props.cameraLerp]);
+
+  // Smooth light move to external target (used by /room page buttons)
+  useEffect(() => {
+    const target = (props && props.lightTarget) || null;
+    if (!target) return;
+    const start = { x: lightX, y: lightY, z: lightZ };
+    const end = {
+      x: target.x ?? start.x,
+      y: target.y ?? start.y,
+      z: target.z ?? start.z,
+    };
+    let raf = null;
+    const t0 = performance.now();
+    const dur = Math.max(100, (props && props.lightLerp) || 900);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / dur);
+      const s = u * u * (3 - 2 * u);
+      const ny = start.y + (end.y - start.y) * s;
+      setLightY(ny);
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [props && props.lightTarget, props && props.lightLerp]);
+
+  // Smoothly drive the color/light path slider (lightProgress) to a target [0..1]
+  useEffect(() => {
+    if (progressTarget === undefined || progressTarget === null) return;
+    const start = lightProgress;
+    const end = THREE.MathUtils.clamp(progressTarget, 0, 1);
+    if (Math.abs(end - start) < 1e-6) return;
+    let raf = null;
+    const t0 = performance.now();
+    const dur = Math.max(100, progressLerp || 900);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / dur);
+      const s = u * u * (3 - 2 * u);
+      const v = start + (end - start) * s;
+      setLightProgress(v);
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [progressTarget, progressLerp, progressTrigger]);
 
   // React to light state
   useEffect(() => {
@@ -441,11 +549,13 @@ export default function Room(props) {
       const c2 = new THREE.Color(palette[i + 1]);
       return c1.lerp(c2, f);
     };
-    // palettes (soft, non-primary “emotional” tones)
+    // palettes (soft, non-primary “emotional” tones) - 원래 순서 유지
+    // p=0 쪽이 아침, p=1 쪽이 밤에 가깝도록 구성
     const ambPalette = ["#ffe6a3", "#d6ebff", "#fafbff", "#ffd3e5", "#ff9a3c", "#9fbaff", "#1a1b25"];
     const bgPalette  = ["#fff2cf", "#e8f2ff", "#f6f7fa", "#ffe6f1", "#ffcf9e", "#d7e3ff", "#0f1117"];
     const spotPalette= ["#ffd48a", "#cbe1ff", "#ffffff", "#ffc2da", "#ff8d36", "#9ab7ff", "#b0c0ff"];
 
+    // 색상 보간은 진행값 p와 같은 방향으로
     const ambCol = lerpPalette(ambPalette, p);
     let bgCol    = lerpPalette(bgPalette, p);
     const spotCol= lerpPalette(spotPalette, p);
@@ -459,8 +569,9 @@ export default function Room(props) {
     };
     const skyBlue = new THREE.Color("#84c8ff");
     const strongSunset = new THREE.Color("#ff8a3e");
-    const dayW = smoothstep(0.10, 0.35, 1 - Math.abs(p - 0.25) * 4);   // peak near p≈0.25
-    const sunsetW = smoothstep(0.55, 0.80, 1 - Math.abs(p - 0.70) * 5); // peak near p≈0.70
+    // 낮/석양 강조는 p 기준 위치 사용 (낮≈0.25, 석양≈0.70)
+    const dayW = smoothstep(0.10, 0.35, 1 - Math.abs(p - 0.25) * 4);
+    const sunsetW = smoothstep(0.55, 0.80, 1 - Math.abs(p - 0.70) * 5);
     if (dayW > 0) bgCol.lerp(skyBlue, THREE.MathUtils.clamp(dayW * 0.6, 0, 1));
     if (sunsetW > 0) bgCol.lerp(strongSunset, THREE.MathUtils.clamp(sunsetW * 0.85, 0, 1));
 
