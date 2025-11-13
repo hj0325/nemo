@@ -59,6 +59,8 @@ export default function Room(props) {
     overlayVisible,
     overlayPos,
     overlayScale,
+    overlayOpacityTarget,
+    overlayOpacityLerp,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -131,7 +133,7 @@ export default function Room(props) {
       alpha: false,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
     renderer.setSize(container.clientWidth, container.clientHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -231,6 +233,7 @@ export default function Room(props) {
         depthTest: true,   // occluded by model
         depthWrite: true,
         toneMapped: false,
+        opacity: 1.0,
       });
       const plane = new THREE.Mesh(geo, mat);
       // Default far behind the room along -Z so it's behind the model from camera views
@@ -280,7 +283,7 @@ export default function Room(props) {
     };
     applyGrain();
     container.appendChild(grain);
-    const grainTimer = setInterval(applyGrain, 350); // slight movement/flicker
+    const grainTimer = null; // keep static grain for performance
 
     // Model + lights
     loadModelAndLights(
@@ -539,6 +542,28 @@ export default function Room(props) {
       mat.needsUpdate = true;
     }
   }, [overlayImageUrl]);
+
+  // Smoothly drive overlay opacity to a target [0..1]
+  useEffect(() => {
+    const mat = overlayMatRef.current;
+    if (!mat) return;
+    if (overlayOpacityTarget === undefined || overlayOpacityTarget === null) return;
+    const start = typeof mat.opacity === "number" ? mat.opacity : 1.0;
+    const end = THREE.MathUtils.clamp(overlayOpacityTarget, 0, 1);
+    if (Math.abs(end - start) < 1e-6) return;
+    let raf = null;
+    const t0 = performance.now();
+    const dur = Math.max(100, overlayOpacityLerp || 900);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / dur);
+      const s = u * u * (3 - 2 * u);
+      mat.opacity = start + (end - start) * s;
+      mat.needsUpdate = true;
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [overlayOpacityTarget, overlayOpacityLerp]);
 
   // Live update of HTML position when slider changes
   useEffect(() => {
@@ -1086,7 +1111,7 @@ export default function Room(props) {
             top: 10,
             left: "50%",
             transform: "translateX(-50%)",
-            zIndex: 35,
+            zIndex: 70,
             display: "flex",
             alignItems: "center",
             gap: 18,
@@ -1128,7 +1153,7 @@ export default function Room(props) {
             top: 52,
             left: "50%",
             transform: "translateX(-50%)",
-            zIndex: 35,
+            zIndex: 70,
             display: "flex",
             alignItems: "center",
             gap: 12,
@@ -1141,12 +1166,16 @@ export default function Room(props) {
         >
           <span style={{ color: "#bfc3ca", fontSize: 12 }}>HTML X</span>
           <input type="range" min={-40} max={40} step={0.001} value={htmlOffX} onChange={(e) => setHtmlOffX(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, width: 70, textAlign: "right" }}>{htmlOffX.toFixed(3)}</span>
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Y</span>
           <input type="range" min={-40} max={40} step={0.001} value={htmlOffY} onChange={(e) => setHtmlOffY(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, width: 70, textAlign: "right" }}>{htmlOffY.toFixed(3)}</span>
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Z</span>
           <input type="range" min={-40} max={40} step={0.001} value={htmlOffZ} onChange={(e) => setHtmlOffZ(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, width: 70, textAlign: "right" }}>{htmlOffZ.toFixed(3)}</span>
           <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 12 }}>Scale</span>
           <input type="range" min={0.2} max={80} step={0.001} value={htmlScaleMul} onChange={(e) => setHtmlScaleMul(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, width: 70, textAlign: "right" }}>{htmlScaleMul.toFixed(3)}</span>
         </div>
       )}
       {!hideUI && (

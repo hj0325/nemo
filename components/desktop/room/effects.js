@@ -2,30 +2,11 @@
 
 import * as THREE from "three";
 
-// Create only lightweight dust; no blur/composer
+// Atmosphere disabled for performance (dust removed)
 export function createAtmosphere(renderer, scene, camera, container) {
-  const dust = buildDust();
-  scene.add(dust.points);
-
-  function onResize() {
-    // no-op (nothing to resize)
-  }
-
-  function onFrame() {
-    updateDust(dust);
-  }
-
-  function dispose() {
-    if (dust.points) {
-      if (dust.points.material && dust.points.material.map) {
-        dust.points.material.map.dispose();
-      }
-      dust.points.material.dispose && dust.points.material.dispose();
-      dust.points.geometry.dispose && dust.points.geometry.dispose();
-      scene.remove(dust.points);
-    }
-  }
-
+  function onResize() {}
+  function onFrame() {}
+  function dispose() {}
   return { onResize, onFrame, dispose };
 }
 

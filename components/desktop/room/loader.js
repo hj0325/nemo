@@ -57,13 +57,15 @@ export function loadModelAndLights(scene, lightPos, onReady) {
         console.warn("Failed to print model tree", e);
       }
 
-      // helper to create bright, light steel material while preserving important maps
+      // helper to create brighter, light steel material while preserving important maps
       const makeSteelMaterial = (old) => {
         const steel = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(0xe9eff5), // light/cool steel
-          metalness: 0.95,
-          roughness: 0.2,
-          envMapIntensity: 0.15,
+          // brighter cool-white steel tint
+          color: new THREE.Color(0xf7fbff),
+          metalness: 1.0,
+          roughness: 0.12,
+          // stronger reflections for a brighter look
+          envMapIntensity: 0.35,
         });
         // preserve supported maps where possible to keep surface detail
         if (old && old.normalMap) steel.normalMap = old.normalMap, steel.normalScale = old.normalScale?.clone?.() || steel.normalScale;
@@ -146,15 +148,15 @@ export function loadModelAndLights(scene, lightPos, onReady) {
       }
 
       // Spotlight
-      const spot = new THREE.SpotLight(new THREE.Color("#eaf2ff"), 850, 100, 0.35, 0.25, 1.0);
+      const spot = new THREE.SpotLight(new THREE.Color("#eaf2ff"), 650, 80, 0.35, 0.25, 1.0);
       spot.position.set(lightPos.x, lightPos.y, lightPos.z);
       spot.castShadow = true;
-      spot.shadow.mapSize.set(3072, 3072);
+      spot.shadow.mapSize.set(1024, 1024);
       // Tweak shadow acne/peter-panning balance for crisper edges
       spot.shadow.bias = -0.0005;
       spot.shadow.normalBias = 0.05;
       spot.shadow.camera.near = 0.5;
-      spot.shadow.camera.far = 100;
+      spot.shadow.camera.far = 80;
       const target = new THREE.Object3D();
       target.position.set(0, 1, 0.7);
       scene.add(target);
