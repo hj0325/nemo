@@ -71,6 +71,13 @@ body {
   animation: fadeIn 3s ease-out forwards;
 }
 
+/* Delayed fade-in for text appearing after the logo */
+.fade-in-delayed {
+  opacity: 0;
+  animation: fadeIn 1.6s ease-out forwards;
+  animation-delay: 1.2s;
+}
+
 /* Second screen background (approximate to provided screenshot) */
 .screen-two-bg {
   background: var(--gradient-bright);
