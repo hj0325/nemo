@@ -50,18 +50,18 @@ export default function Page() {
     <>
       {TopBar}
       {active === 1 && <Home />}
-      {active === 2 && <Room />}
+      {active === 2 && <Room showHtmlSliders={true} />}
       {active === 3 && (
-        <div
-          style={{
-            width: "100%",
-            height: "100vh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+      <div
+        style={{
+          width: "100%",
+          height: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
             color: "#e5e7eb",
             background: "#0f1115",
-          }}
+        }}
         >
           3번 화면 (준비 중)
         </div>

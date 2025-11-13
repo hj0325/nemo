@@ -6,29 +6,62 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { setupEXREnvironment } from "./env";
 import { createAtmosphere } from "./effects";
 import { loadModelAndLights } from "./loader";
+import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
-export default function Room() {
+// Manual tuning values for the HTML screen attachment
+// Adjust these numbers to fine-tune position/size/rotation on the monitor
+const HTML_TUNE = {
+  offsetX: 0.0,     // base local offsets kept small so sliders have visible effect
+  offsetY: 0.0,
+  offsetZ: 0.002,   // slight forward to avoid z-fighting
+  scaleMul: 1.0,
+  rotYDeg: 0,
+  // Arrow-like local axis (can be tuned), distance controlled by slider htmlDist
+  axisX: 1.0,
+  axisY: 0.35,
+  axisZ: 0.8,
+  axisDist: 0.0,
+};
+
+export default function Room(props) {
+  const { initialCamera, initialLight, initialFov, hideUI, showPathSlider, htmlOffset, zoomOnly, showHtmlSliders } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const spotRef = useRef(null);
   const spotHelperRef = useRef(null);
+  const cssRendererRef = useRef(null);
+  const sceneRef = useRef(null);
   const lightOpenInitial = true;
+  // HTML screen placement refs/state
+  const screenObjRef = useRef(null);
+  const cssScreenRef = useRef(null);
+  const screenCenterLocalRef = useRef(null);
+  const [htmlDist, setHtmlDist] = useState(HTML_TUNE.axisDist || 0);
+  const [htmlOffX, setHtmlOffX] = useState(0);
+  const [htmlOffY, setHtmlOffY] = useState(0);
+  const [htmlOffZ, setHtmlOffZ] = useState(0);
+  const [htmlScaleMul, setHtmlScaleMul] = useState(1);
 
   const [controlsOpen, setControlsOpen] = useState(true);
-  const [camX, setCamX] = useState(-3.2);
-  const [camY, setCamY] = useState(1.7);
-  const [camZ, setCamZ] = useState(8.6);
+  const [camX, setCamX] = useState(initialCamera?.x ?? -2.0);
+  const [camY, setCamY] = useState(initialCamera?.y ?? 1.1);
+  const [camZ, setCamZ] = useState(initialCamera?.z ?? 4.8);
   const [enableZoom, setEnableZoom] = useState(true);
   const [enablePan, setEnablePan] = useState(false);
   const [lockDistance, setLockDistance] = useState(false);
   const [lockTilt, setLockTilt] = useState(true);
 
   const [lightOpen, setLightOpen] = useState(lightOpenInitial);
-  const [lightX, setLightX] = useState(0.2);
-  const [lightY, setLightY] = useState(15.2);
-  const [lightZ, setLightZ] = useState(-27.2);
+  const [lightX, setLightX] = useState(initialLight?.x ?? 0.2);
+  const [lightY, setLightY] = useState(initialLight?.y ?? 15.2);
+  const [lightZ, setLightZ] = useState(initialLight?.z ?? -27.2);
+  const [preset3Cam, setPreset3Cam] = useState(null);
+  // Path slider state (0..1)
+  const [lightProgress, setLightProgress] = useState(0.0);
+  // Path definition
+  const PATH = useMemo(() => ({ xMin: -34.8, xMax: 3.3, zStart: -22.7, zEnd: -50.0 }), []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -36,9 +69,10 @@ export default function Room() {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0f1115);
+    sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(
-      50,
+      initialFov ?? 38,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
@@ -46,12 +80,18 @@ export default function Room() {
     camera.position.set(2.5, 2, 3);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(container.clientWidth, container.clientHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
+    renderer.physicallyCorrectLights = true;
+    renderer.useLegacyLights = false;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
@@ -59,8 +99,9 @@ export default function Room() {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.enableZoom = enableZoom;
-    controls.enablePan = enablePan;
+    controls.enableZoom = zoomOnly ? true : enableZoom;
+    controls.enablePan = zoomOnly ? false : enablePan;
+    controls.enableRotate = zoomOnly ? false : true;
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
@@ -70,17 +111,176 @@ export default function Room() {
     // Add a faint cool ambient to neutralize yellow cast (no heavy filters)
     const ambient = new THREE.AmbientLight(0xdfeaff, 0.12);
     scene.add(ambient);
+    const ambientRef = { current: ambient };
 
     // Atmosphere
     const atmosphere = createAtmosphere(renderer, scene, camera, container);
+
+    // CSS3D overlay renderer for HTML screen
+    const cssRenderer = new CSS3DRenderer();
+    cssRenderer.setSize(container.clientWidth, container.clientHeight);
+    cssRenderer.domElement.style.position = "absolute";
+    cssRenderer.domElement.style.top = "0";
+    cssRenderer.domElement.style.left = "0";
+    cssRenderer.domElement.style.pointerEvents = "none";
+    cssRenderer.domElement.style.zIndex = "1";
+    container.appendChild(cssRenderer.domElement);
+    cssRendererRef.current = cssRenderer;
+
+    // Capture initial camera as preset 3 snapshot
+    setPreset3Cam({ x: camX, y: camY, z: camZ });
+
+    // Lofi film grain overlay (CSS-based, very lightweight)
+    const makeGrainDataUrl = () => {
+      const s = 64;
+      const c = document.createElement("canvas");
+      c.width = s;
+      c.height = s;
+      const ctx = c.getContext("2d");
+      const img = ctx.createImageData(s, s);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = 230 + Math.floor(Math.random() * 25); // subtle light grain
+        img.data[i + 0] = n;
+        img.data[i + 1] = n;
+        img.data[i + 2] = n;
+        img.data[i + 3] = Math.floor(14 + Math.random() * 12); // alpha 14~26
+      }
+      ctx.putImageData(img, 0, 0);
+      return c.toDataURL("image/png");
+    };
+
+    const grain = document.createElement("div");
+    grain.style.position = "absolute";
+    grain.style.inset = "0";
+    grain.style.pointerEvents = "none";
+    grain.style.zIndex = "2";
+    grain.style.mixBlendMode = "multiply";
+    grain.style.imageRendering = "pixelated";
+    const applyGrain = () => {
+      grain.style.backgroundImage = `url('${makeGrainDataUrl()}')`;
+      grain.style.backgroundRepeat = "repeat";
+      grain.style.backgroundSize = "128px 128px";
+      grain.style.opacity = "0.18";
+    };
+    applyGrain();
+    container.appendChild(grain);
+    const grainTimer = setInterval(applyGrain, 350); // slight movement/flicker
 
     // Model + lights
     loadModelAndLights(
       scene,
       { x: lightX, y: lightY, z: lightZ },
-      ({ spot, spotHelper }) => {
+      ({ spot, spotHelper, screen }) => {
         spotRef.current = spot;
         spotHelperRef.current = spotHelper;
+        // Attach HTML to monitor screen if detected
+        if (screen && cssRendererRef.current) {
+          // eslint-disable-next-line no-console
+          console.log("Attaching HTML to screen:", screen.name);
+          const iframe = document.createElement("iframe");
+          iframe.setAttribute("title", "screen");
+          iframe.style.border = "0";
+          iframe.width = "800";
+          iframe.height = "500";
+          iframe.style.pointerEvents = "none";
+          iframe.srcdoc = `
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { --bg:#0b0d12; --fg:#e5e7eb; }
+      * { box-sizing: border-box; }
+      html,body { height:100%; }
+      body {
+        margin:0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, Apple Color Emoji, Segoe UI Emoji;
+        display:flex; align-items:center; justify-content:center;
+        overflow:hidden;
+      }
+      .wrap {
+        position:relative;
+        width:100%; height:100%;
+        display:flex; align-items:center; justify-content:center;
+        filter: contrast(1.05) saturate(0.9);
+      }
+      img.nemo {
+        max-width:90%;
+        max-height:90%;
+        image-rendering: pixelated;
+        filter: grayscale(12%) brightness(1.05);
+        animation: float 3.6s ease-in-out infinite, flicker 6s steps(2,end) infinite;
+      }
+      /* subtle vertical scanlines */
+      .scan {
+        position:absolute; inset:0; pointer-events:none; opacity:.12;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.06) 0px,
+          rgba(255,255,255,0.06) 1px,
+          transparent 2px,
+          transparent 4px
+        );
+        animation: scanMove 6s linear infinite;
+      }
+      @keyframes float {
+        0%,100% { transform: translateY(0) scale(1.0); }
+        50% { transform: translateY(-4px) scale(1.005); }
+      }
+      @keyframes scanMove {
+        0% { transform: translateY(-10%); }
+        100% { transform: translateY(10%); }
+      }
+      @keyframes flicker {
+        0%, 97%, 100% { filter: grayscale(12%) brightness(1.05); }
+        98% { filter: grayscale(14%) brightness(1.0); }
+        99% { filter: grayscale(10%) brightness(1.08); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img class="nemo" src="/2d/nemo.png" alt="nemo" />
+      <div class="scan"></div>
+    </div>
+  </body>
+  </html>`;
+          // Build CSS3D object and attach directly to the screen in local space
+          const cssObj = new CSS3DObject(iframe);
+          const bbox = new THREE.Box3().setFromObject(screen);
+          const size = new THREE.Vector3();
+          const centerWorld = new THREE.Vector3();
+          bbox.getSize(size);
+          bbox.getCenter(centerWorld);
+          const centerLocal = screen.worldToLocal(centerWorld.clone());
+          cssObj.position.copy(centerLocal);
+          cssObj.position.x += HTML_TUNE.offsetX + (htmlOffset?.x || 0) + htmlOffX;
+          cssObj.position.y += HTML_TUNE.offsetY + (htmlOffset?.y || 0) + htmlOffY;
+          cssObj.position.z += HTML_TUNE.offsetZ + (htmlOffset?.z || 0) + htmlOffZ;
+          // Arrow-axis offset (local space)
+          {
+            const dir = new THREE.Vector3(
+              HTML_TUNE.axisX || 0,
+              HTML_TUNE.axisY || 0,
+              HTML_TUNE.axisZ || 0
+            );
+            if (dir.lengthSq() > 0) {
+              dir.normalize().multiplyScalar(htmlDist || 0);
+              cssObj.position.add(dir);
+            }
+          }
+          // Heuristic scale: map ~200 CSS px to screen width in world units
+          const s = THREE.MathUtils.clamp((size.x / 200) || 0.005, 0.002, 0.02) * HTML_TUNE.scaleMul * htmlScaleMul;
+          cssObj.scale.setScalar(s);
+          cssObj.rotation.y = THREE.MathUtils.degToRad(HTML_TUNE.rotYDeg);
+          screen.add(cssObj);
+          // save refs for live updates
+          screenObjRef.current = screen;
+          cssScreenRef.current = cssObj;
+          screenCenterLocalRef.current = centerLocal.clone();
+        }
       }
     );
 
@@ -91,6 +291,7 @@ export default function Room() {
       if (spotHelperRef.current) spotHelperRef.current.update();
       atmosphere.onFrame();
       renderer.render(scene, camera);
+      if (cssRendererRef.current) cssRendererRef.current.render(scene, camera);
     };
     tick();
 
@@ -101,16 +302,23 @@ export default function Room() {
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
       atmosphere.onResize(w, h);
+      if (cssRendererRef.current) cssRendererRef.current.setSize(w, h);
     };
     const ro = new ResizeObserver(handleResize);
     ro.observe(container);
 
+    // cleanup
     return () => {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       disposeEnv();
       atmosphere.dispose();
       controls.dispose();
+      if (cssRendererRef.current && cssRendererRef.current.domElement && cssRendererRef.current.domElement.parentNode) {
+        cssRendererRef.current.domElement.parentNode.removeChild(cssRendererRef.current.domElement);
+      }
+      if (grainTimer) clearInterval(grainTimer);
+      if (grain && grain.parentNode) grain.parentNode.removeChild(grain);
       if (rendererRef.current) {
         rendererRef.current.dispose();
         const el = rendererRef.current.domElement;
@@ -118,6 +326,37 @@ export default function Room() {
       }
     };
   }, []);
+
+  // Live update of HTML position when slider changes
+  useEffect(() => {
+    const screen = screenObjRef.current;
+    const cssObj = cssScreenRef.current;
+    const centerLocal = screenCenterLocalRef.current;
+    if (!screen || !cssObj || !centerLocal) return;
+    // reset to base
+    cssObj.position.copy(centerLocal);
+    cssObj.position.x += HTML_TUNE.offsetX + (htmlOffset?.x || 0);
+    cssObj.position.y += HTML_TUNE.offsetY + (htmlOffset?.y || 0);
+    cssObj.position.z += HTML_TUNE.offsetZ + (htmlOffset?.z || 0);
+    const dir = new THREE.Vector3(
+      HTML_TUNE.axisX || 0,
+      HTML_TUNE.axisY || 0,
+      HTML_TUNE.axisZ || 0
+    );
+    if (dir.lengthSq() > 0) {
+      dir.normalize().multiplyScalar(htmlDist || 0);
+      cssObj.position.add(dir);
+    }
+    // scale live
+    // estimate base width again from screen bbox
+    const bbox = new THREE.Box3().setFromObject(screen);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    const baseScale = THREE.MathUtils.clamp((size.x / 200) || 0.005, 0.002, 0.02) * (HTML_TUNE.scaleMul || 1);
+    cssObj.scale.setScalar(baseScale * (htmlScaleMul || 1));
+    cssObj.rotation.y = THREE.MathUtils.degToRad(HTML_TUNE.rotYDeg || 0);
+    cssObj.updateMatrixWorld();
+  }, [htmlDist, htmlOffset, htmlOffX, htmlOffY, htmlOffZ, htmlScaleMul]);
 
   // React to camera state
   useEffect(() => {
@@ -144,10 +383,11 @@ export default function Room() {
       controls.minPolarAngle = 0.01;
       controls.maxPolarAngle = Math.PI - 0.01;
     }
-    controls.enableZoom = enableZoom;
-    controls.enablePan = enablePan;
+    controls.enableZoom = zoomOnly ? true : enableZoom;
+    controls.enablePan = zoomOnly ? false : enablePan;
+    controls.enableRotate = zoomOnly ? false : true;
     controls.update();
-  }, [camX, camY, camZ, lockDistance, lockTilt, enableZoom, enablePan]);
+  }, [camX, camY, camZ, lockDistance, lockTilt, enableZoom, enablePan, zoomOnly]);
 
   // React to light state
   useEffect(() => {
@@ -155,6 +395,83 @@ export default function Room() {
     spotRef.current.position.set(lightX, lightY, lightZ);
     spotRef.current.updateMatrixWorld();
   }, [lightX, lightY, lightZ]);
+
+  // Map progress 0..1 to X/Z as specified:
+  // 0..0.5: move X from xMin -> xMax, Z fixed zStart
+  // 0.5..1: X fixed xMax, move Z from zStart -> zEnd
+  useEffect(() => {
+    const p = THREE.MathUtils.clamp(lightProgress, 0, 1);
+    if (p <= 0.5) {
+      const t = p / 0.5;
+      const nx = THREE.MathUtils.lerp(PATH.xMin, PATH.xMax, t);
+      setLightX(nx);
+      setLightZ(PATH.zStart);
+    } else {
+      const t = (p - 0.5) / 0.5;
+      setLightX(PATH.xMax);
+      const nz = THREE.MathUtils.lerp(PATH.zStart, PATH.zEnd, t);
+      setLightZ(nz);
+    }
+  }, [lightProgress, PATH]);
+
+  // Multi-stop color transition (yellow → light blue → white → light pink → orange → blue → night)
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    // compute progress from current X/Z
+    let p = 0.0;
+    if (Math.abs(lightZ - PATH.zStart) < Math.abs(PATH.zEnd - PATH.zStart) * 0.25) {
+      // first leg
+      const t = (lightX - PATH.xMin) / (PATH.xMax - PATH.xMin || 1e-6);
+      p = THREE.MathUtils.clamp(t, 0, 1) * 0.5;
+    } else {
+      // second leg
+      const t = (lightZ - PATH.zStart) / (PATH.zEnd - PATH.zStart || 1e-6);
+      p = 0.5 + THREE.MathUtils.clamp(t, 0, 1) * 0.5;
+    }
+    const lerpPalette = (palette, t) => {
+      const n = palette.length;
+      if (n === 0) return new THREE.Color("#ffffff");
+      if (t <= 0) return new THREE.Color(palette[0]);
+      if (t >= 1) return new THREE.Color(palette[n - 1]);
+      const seg = (n - 1) * t;
+      const i = Math.floor(seg);
+      const f = seg - i;
+      const c1 = new THREE.Color(palette[i]);
+      const c2 = new THREE.Color(palette[i + 1]);
+      return c1.lerp(c2, f);
+    };
+    // palettes (soft, non-primary “emotional” tones)
+    const ambPalette = ["#ffe6a3", "#d6ebff", "#fafbff", "#ffd3e5", "#ff9a3c", "#9fbaff", "#1a1b25"];
+    const bgPalette  = ["#fff2cf", "#e8f2ff", "#f6f7fa", "#ffe6f1", "#ffcf9e", "#d7e3ff", "#0f1117"];
+    const spotPalette= ["#ffd48a", "#cbe1ff", "#ffffff", "#ffc2da", "#ff8d36", "#9ab7ff", "#b0c0ff"];
+
+    const ambCol = lerpPalette(ambPalette, p);
+    let bgCol    = lerpPalette(bgPalette, p);
+    const spotCol= lerpPalette(spotPalette, p);
+
+    // Emphasize outdoor color:
+    // - Daytime: push toward sky blue
+    // - Sunset: push strongly toward warm orange
+    const smoothstep = (edge0, edge1, x) => {
+      const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    const skyBlue = new THREE.Color("#84c8ff");
+    const strongSunset = new THREE.Color("#ff8a3e");
+    const dayW = smoothstep(0.10, 0.35, 1 - Math.abs(p - 0.25) * 4);   // peak near p≈0.25
+    const sunsetW = smoothstep(0.55, 0.80, 1 - Math.abs(p - 0.70) * 5); // peak near p≈0.70
+    if (dayW > 0) bgCol.lerp(skyBlue, THREE.MathUtils.clamp(dayW * 0.6, 0, 1));
+    if (sunsetW > 0) bgCol.lerp(strongSunset, THREE.MathUtils.clamp(sunsetW * 0.85, 0, 1));
+
+    // ambient
+    const ambLight = scene.children.find((c) => c.isLight && c.type === "AmbientLight");
+    if (ambLight) ambLight.color.copy(ambCol);
+    // background
+    scene.background = bgCol;
+    // spot color
+    if (spotRef.current) spotRef.current.color.copy(spotCol);
+  }, [lightX, lightZ]);
 
   const moveCameraBy = (offset) => {
     const camera = cameraRef.current;
@@ -334,14 +651,20 @@ export default function Room() {
               2
             </button>
             <button
-              onClick={() => {
-                setCamX(-1.9);
-                setCamY(0.8);
-                setCamZ(3.6);
-                setEnableZoom(true);
-                setEnablePan(false);
-                setLockDistance(false);
-                setLockTilt(true);
+              onClick={(e) => {
+                if (e.shiftKey) {
+                  // Save current camera to preset 3
+                  setPreset3Cam({ x: camX, y: camY, z: camZ });
+                } else if (preset3Cam) {
+                  // Recall saved camera
+                  setCamX(preset3Cam.x);
+                  setCamY(preset3Cam.y);
+                  setCamZ(preset3Cam.z);
+                  setEnableZoom(true);
+                  setEnablePan(false);
+                  setLockDistance(false);
+                  setLockTilt(true);
+                }
               }}
               style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #6b5bd4", background: "#1a1f2e", color: "#e5e7eb", cursor: "pointer" }}
             >
@@ -356,7 +679,7 @@ export default function Room() {
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => { setLightX(-0.9); setLightY(12.8); setLightZ(-24.0); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #6b5bd4", background: "#1a1f2e", color: "#e5e7eb", cursor: "pointer" }}>1</button>
             <button onClick={() => { setLightX(-14.7); setLightY(10.7); setLightZ(-18.9); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #6b5bd4", background: "#1a1f2e", color: "#e5e7eb", cursor: "pointer" }}>2</button>
-            <button onClick={() => { setLightX(-14.7); setLightY(10.7); setLightZ(-24.4); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #6b5bd4", background: "#1a1f2e", color: "#e5e7eb", cursor: "pointer" }}>3</button>
+            <button onClick={() => { setLightX(-1.2); setLightY(10.2); setLightZ(-22.7); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #6b5bd4", background: "#1a1f2e", color: "#e5e7eb", cursor: "pointer" }}>3</button>
           </div>
         </div>
       </div>
@@ -402,53 +725,127 @@ export default function Room() {
 
   return (
     <>
-      {/* toggles */}
-      <button
-        onClick={() => setControlsOpen((v) => !v)}
-        style={{
-          position: "fixed",
-          top: 60,
-          left: controlsOpen ? 300 : 0,
-          transform: "translateX(-50%)",
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          border: "1px solid #23262d",
-          background: "#111318",
-          color: "#e5e7eb",
-          cursor: "pointer",
-          zIndex: 30,
-          transition: "left 0.2s ease",
-        }}
-        aria-label="Toggle camera controls"
-        title="Toggle camera controls"
-      >
-        {controlsOpen ? "←" : "→"}
-      </button>
-      <button
-        onClick={() => setLightOpen((v) => !v)}
-        style={{
-          position: "fixed",
-          top: 60,
-          right: lightOpen ? 280 : 0,
-          transform: "translateX(50%)",
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          border: "1px solid #23262d",
-          background: "#111318",
-          color: "#e5e7eb",
-          cursor: "pointer",
-          zIndex: 30,
-          transition: "right 0.2s ease",
-        }}
-        aria-label="Toggle light controls"
-        title="Toggle light controls"
-      >
-        {lightOpen ? "→" : "←"}
-      </button>
-      {Sidebar}
-      {LightToolbar}
+      {showPathSlider && (
+        <div
+          style={{
+            position: "fixed",
+            top: 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 35,
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+            background: "rgba(17,19,24,.6)",
+            border: "1px solid #23262d",
+            borderRadius: 10,
+            padding: "8px 12px",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <span style={{ color: "#bfc3ca", fontSize: 12, minWidth: 70, textAlign: "right" }}>Light Path</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.001}
+            value={lightProgress}
+            onChange={(e) => setLightProgress(parseFloat(e.target.value))}
+            style={{ width: 220 }}
+          />
+          <span style={{ color: "#bfc3ca", fontSize: 12 }}>{lightProgress.toFixed(3)}</span>
+          <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 16, minWidth: 70, textAlign: "right" }}>HTML Pos</span>
+          <input
+            type="range"
+            min={-0.5}
+            max={1}
+            step={0.001}
+            value={htmlDist}
+            onChange={(e) => setHtmlDist(parseFloat(e.target.value))}
+            style={{ width: 220 }}
+          />
+          <span style={{ color: "#bfc3ca", fontSize: 12 }}>{htmlDist.toFixed(3)}</span>
+        </div>
+      )}
+      {showHtmlSliders && (
+        <div
+          style={{
+            position: "fixed",
+            top: 52,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 35,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            background: "rgba(17,19,24,.6)",
+            border: "1px solid #23262d",
+            borderRadius: 10,
+            padding: "8px 12px",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <span style={{ color: "#bfc3ca", fontSize: 12 }}>HTML X</span>
+          <input type="range" min={-2} max={2} step={0.001} value={htmlOffX} onChange={(e) => setHtmlOffX(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Y</span>
+          <input type="range" min={-2} max={2} step={0.001} value={htmlOffY} onChange={(e) => setHtmlOffY(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 10 }}>Z</span>
+          <input type="range" min={-2} max={2} step={0.001} value={htmlOffZ} onChange={(e) => setHtmlOffZ(parseFloat(e.target.value))} style={{ width: 160 }} />
+          <span style={{ color: "#bfc3ca", fontSize: 12, marginLeft: 12 }}>Scale</span>
+          <input type="range" min={0.2} max={4} step={0.001} value={htmlScaleMul} onChange={(e) => setHtmlScaleMul(parseFloat(e.target.value))} style={{ width: 160 }} />
+        </div>
+      )}
+      {!hideUI && (
+        <>
+          {/* toggles */}
+          <button
+            onClick={() => setControlsOpen((v) => !v)}
+            style={{
+              position: "fixed",
+              top: 60,
+              left: controlsOpen ? 300 : 0,
+              transform: "translateX(-50%)",
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              border: "1px solid #23262d",
+              background: "#111318",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              zIndex: 30,
+              transition: "left 0.2s ease",
+            }}
+            aria-label="Toggle camera controls"
+            title="Toggle camera controls"
+          >
+            {controlsOpen ? "←" : "→"}
+          </button>
+          <button
+            onClick={() => setLightOpen((v) => !v)}
+            style={{
+              position: "fixed",
+              top: 60,
+              right: lightOpen ? 280 : 0,
+              transform: "translateX(50%)",
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              border: "1px solid #23262d",
+              background: "#111318",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              zIndex: 30,
+              transition: "right 0.2s ease",
+            }}
+            aria-label="Toggle light controls"
+            title="Toggle light controls"
+          >
+            {lightOpen ? "→" : "←"}
+          </button>
+          {Sidebar}
+          {LightToolbar}
+        </>
+      )}
       <div
         ref={containerRef}
         style={{
