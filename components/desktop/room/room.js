@@ -486,6 +486,28 @@ export default function Room(props) {
     raf = requestAnimationFrame(step);
     return () => raf && cancelAnimationFrame(raf);
   }, [props && props.controlsTarget, props && props.controlsLerp]);
+
+  // Smoothly adjust pin light intensity
+  useEffect(() => {
+    const pin = pinRef.current;
+    if (!pin) return;
+    if (pinIntensityTarget === undefined || pinIntensityTarget === null) return;
+    const start = pin.intensity ?? 0;
+    const end = pinIntensityTarget;
+    if (Math.abs(end - start) < 1e-6) return;
+    let raf = null;
+    const t0 = performance.now();
+    const dur = Math.max(100, pinIntensityLerp || 900);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / dur);
+      const s = u * u * (3 - 2 * u);
+      const v = start + (end - start) * s;
+      pin.intensity = v;
+      if (u < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [pinIntensityTarget, pinIntensityLerp]);
   // Smooth light move to external target (used by /room page buttons)
   useEffect(() => {
     const target = (props && props.lightTarget) || null;
@@ -510,27 +532,6 @@ export default function Room(props) {
     return () => raf && cancelAnimationFrame(raf);
   }, [props && props.lightTarget, props && props.lightLerp]);
 
-  // Smoothly adjust pin light intensity
-  useEffect(() => {
-    const pin = pinRef.current;
-    if (!pin) return;
-    if (pinIntensityTarget === undefined || pinIntensityTarget === null) return;
-    const start = pin.intensity ?? 0;
-    const end = pinIntensityTarget;
-    if (Math.abs(end - start) < 1e-6) return;
-    let raf = null;
-    const t0 = performance.now();
-    const dur = Math.max(100, pinIntensityLerp || 900);
-    const step = (now) => {
-      const u = Math.min(1, (now - t0) / dur);
-      const s = u * u * (3 - 2 * u);
-      const v = start + (end - start) * s;
-      pin.intensity = v;
-      if (u < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => raf && cancelAnimationFrame(raf);
-  }, [pinIntensityTarget, pinIntensityLerp]);
   // Smoothly drive the color/light path slider (lightProgress) to a target [0..1]
   useEffect(() => {
     if (progressTarget === undefined || progressTarget === null) return;

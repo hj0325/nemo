@@ -4,40 +4,19 @@ import React, { useEffect, useMemo, useState } from "react";
 import Room from "@/components/desktop/room/room";
 
 export default function FixedRoomPage() {
-  // 페이지 스크롤 잠금 (mount 시 적용, unmount 시 복원)
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const prevHtmlOverflow = html.style.overflow;
-    const prevBodyOverflow = body.style.overflow;
-    const prevHtmlHeight = html.style.height;
-    const prevBodyHeight = body.style.height;
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    html.style.height = "100%";
-    body.style.height = "100%";
-    return () => {
-      html.style.overflow = prevHtmlOverflow;
-      body.style.overflow = prevBodyOverflow;
-      html.style.height = prevHtmlHeight;
-      body.style.height = prevBodyHeight;
-    };
-  }, []);
-
   // Dramatic landing (very close), then pull back step-by-step
   // Push in even further for a “fully zoomed-in” landing shot
-  const camVeryClose = useMemo(() => ({ x: 1.10, y: 1.60, z: 1.60 }), []);
+  const camVeryClose = useMemo(() => ({ x: 1.10, y: 1.00, z: 1.60 }), []);
   // Start slightly higher on Z, then settle down to camVeryClose
-  const camVeryCloseUp = useMemo(() => ({ x: 1.10, y: 1.60, z: 1.90 }), []);
+  const camVeryCloseUp = useMemo(() => ({ x: 1.10, y: 1.00, z: 1.90 }), []);
   const camClose = useMemo(() => ({ x: 3.2, y: 2.2, z: 4.2 }), []);
   const camFar = useMemo(() => ({ x: 4.6, y: 3.2, z: 9.0 }), []);
-  // 창문 정면샷을 위한 좌측 포지션(정면 느낌)
-  // 살짝 줌아웃(+거리), 조금 더 위(y), y축 기준 약간의 회전(타겟 x 오프셋)
-  const camFrontLeft = useMemo(() => ({ x: -3.9, y: -2.2, z: 7.2 }), []);
-  // 정면 보기: 타겟 x는 동일, z는 카메라 앞쪽(좀 더 깊게)으로 이동
-  const lookWindow = useMemo(() => ({ x: -3.9, y: -2.0, z: -4.8 }), []);
+  // 이미지 각도에 더 근접하도록 오른쪽/뒤/약간 위로
+  const camAngle = useMemo(() => ({ x: -3.9, y: -2, z: 6.8 }), []);
+  // 정면 보기 타겟 (창문 방향을 정면으로 바라보는 느낌)
+  const lookWindow = useMemo(() => ({ x: -3.9, y: -1.6, z: -4.8 }), []);
   // Step 0 -> camClose, Step 1 -> camFar, Step 2 -> camAngle
-  const steps = [camClose, camFar, camFrontLeft] as { x: number; y: number; z: number }[];
+  const steps = [camClose, camFar, camAngle] as { x: number; y: number; z: number }[];
   const [step, setStep] = useState(0);
   // step 0로 돌아오면 랜딩 최종 구도(camVeryClose)로 복귀
   const stepTarget = step === 0 ? camVeryClose : steps[step];
