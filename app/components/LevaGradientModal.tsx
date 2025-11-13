@@ -14,6 +14,8 @@ function uid() {
 }
 
 export default function LevaGradientModal() {
+  // Casted Leva to any for passing custom store without TS friction
+  const LevaAny = Leva as any;
   const store = useCreateStore();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [transparentStart, setTransparentStart] = useState<number>(80);
@@ -28,6 +30,16 @@ export default function LevaGradientModal() {
   const [yellowStart, setYellowStart] = useState<number>(85.0); // %
   const [yellowEnd, setYellowEnd] = useState<number>(92.6); // %
   const [animAmp, setAnimAmp] = useState<number>(4.45); // %
+  // Coordinate overrides (explicit top/bottom band positions)
+  const [topStart, setTopStart] = useState<number>(85.0);
+  const [topEnd, setTopEnd] = useState<number>(93.0);
+  // New bottom white gradient controls
+  const [bottomWhiteStart, setBottomWhiteStart] = useState<number>(7.0);
+  const [bottomWhiteEnd, setBottomWhiteEnd] = useState<number>(63.0);
+  const [bottomWhiteColor, setBottomWhiteColor] = useState<string>("#f6f0d5");
+  const [bottomAnimAmp, setBottomAnimAmp] = useState<number>(4.45);
+  const [linkBottomMotion, setLinkBottomMotion] = useState<boolean>(true);
+  const [debugAxis, setDebugAxis] = useState<boolean>(false);
 
   const gradientCss = useMemo(() => {
     const sorted = [...stops].sort((a, b) => a.position - b.position);
@@ -50,10 +62,18 @@ export default function LevaGradientModal() {
         yellowStart: Math.min(0.995, Math.max(0.80, yellowStart / 100)),
         yellowEnd: Math.min(1.0, Math.max(0.805, yellowEnd / 100)),
         animAmp: Math.max(0.0, animAmp / 100),
+        topStart: Math.min(0.999, Math.max(0.0, topStart / 100)),
+        topEnd: Math.min(1.0, Math.max(0.0, topEnd / 100)),
+        bottomWhiteStart: Math.min(0.999, Math.max(0.0, bottomWhiteStart / 100)),
+        bottomWhiteEnd: Math.min(1.0, Math.max(0.0, bottomWhiteEnd / 100)),
+        bottomWhiteColor,
+        bottomAnimAmp: Math.max(0.0, bottomAnimAmp / 100),
+        linkBottomMotion: linkBottomMotion ? 1.0 : 0.0,
+        debugAxis: debugAxis ? 1.0 : 0.0,
       },
     });
     window.dispatchEvent(event);
-  }, [c3, c4, c5, yellowStart, yellowEnd, animAmp]);
+  }, [c3, c4, c5, yellowStart, yellowEnd, animAmp, topStart, topEnd, bottomWhiteStart, bottomWhiteEnd, bottomWhiteColor, bottomAnimAmp, linkBottomMotion, debugAxis]);
 
   function updateStop(id: string, patch: Partial<GradientStop>) {
     setStops((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -82,6 +102,14 @@ export default function LevaGradientModal() {
     setYellowStart(85.0);
     setYellowEnd(92.6);
     setAnimAmp(4.45);
+    setTopStart(85.0);
+    setTopEnd(93.0);
+    setBottomWhiteStart(7.0);
+    setBottomWhiteEnd(63.0);
+    setBottomWhiteColor("#f6f0d5");
+    setBottomAnimAmp(4.45);
+    setLinkBottomMotion(true);
+    setDebugAxis(false);
   }
 
   useControls(
@@ -125,6 +153,58 @@ export default function LevaGradientModal() {
               max: 5,
               onChange: (v: number) => setAnimAmp(v),
             },
+            Coordinates: folder(
+              {
+                "Top start (%)": {
+                  value: topStart,
+                  min: 0,
+                  max: 100,
+                  onChange: (v: number) => setTopStart(v),
+                },
+                "Top end (%)": {
+                  value: topEnd,
+                  min: 0,
+                  max: 100,
+                  onChange: (v: number) => setTopEnd(v),
+                },
+                "Bottom white start (%)": {
+                  value: bottomWhiteStart,
+                  min: 0,
+                  max: 100,
+                  onChange: (v: number) => setBottomWhiteStart(v),
+                },
+                "Bottom white end (%)": {
+                  value: bottomWhiteEnd,
+                  min: 0,
+                  max: 100,
+                  onChange: (v: number) => setBottomWhiteEnd(v),
+                },
+                "Bottom white color": {
+                  value: bottomWhiteColor,
+                  onChange: (v: string) => setBottomWhiteColor(v),
+                },
+                "Link bottom motion to top": {
+                  value: linkBottomMotion,
+                  onChange: (v: boolean) => setLinkBottomMotion(v),
+                },
+                "Bottom breath amp (%)": {
+                  value: bottomAnimAmp,
+                  min: 0,
+                  max: 5,
+                  onChange: (v: number) => setBottomAnimAmp(v),
+                },
+              },
+              { collapsed: true }
+            ),
+            Debug: folder(
+              {
+                "Show debug axis": {
+                  value: debugAxis,
+                  onChange: (v: boolean) => setDebugAxis(v),
+                },
+              },
+              { collapsed: false }
+            ),
             "Reset background": button(resetBackground),
           },
           { collapsed: false }
@@ -183,7 +263,7 @@ export default function LevaGradientModal() {
             aria-hidden="true"
           />
           {/* Leva attaches to body, keep open while modal visible */}
-          <Leva
+          <LevaAny
             store={store}
             collapsed={false}
             fill={false}

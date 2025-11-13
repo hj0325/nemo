@@ -50,6 +50,18 @@ export default function ThreeBackground() {
       u_yellowStart: { value: 0.85 },
       u_yellowEnd: { value: 0.926 },
       u_animAmp: { value: 0.0445 },
+      // explicit coordinate controls
+      u_topStart: { value: 0.85 },
+      u_topEnd: { value: 0.93 },
+      // bottom white gradient
+      u_bottomWhiteStart: { value: 0.07 }, // distance from bottom (0..1)
+      u_bottomWhiteEnd: { value: 0.63 },
+      u_bottomWhiteColor: { value: new THREE.Color(0xf6f0d5) },
+      // bottom motion
+      u_bottomAnimAmp: { value: 0.0445 },
+      u_linkBottomMotion: { value: 1.0 },
+      // debug overlay
+      u_debugAxis: { value: 0.0 },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -70,6 +82,11 @@ export default function ThreeBackground() {
         uniform float u_time;
         uniform vec3 u_c0, u_c1, u_c2, u_c3, u_c4, u_c5;
         uniform float u_yellowStart, u_yellowEnd, u_animAmp;
+        uniform float u_topStart, u_topEnd;
+        uniform float u_bottomWhiteStart, u_bottomWhiteEnd;
+        uniform vec3 u_bottomWhiteColor;
+        uniform float u_bottomAnimAmp, u_linkBottomMotion;
+        uniform float u_debugAxis;
 
         vec3 srgb(float r, float g, float b) { return vec3(r,g,b)/255.0; }
 
@@ -95,11 +112,51 @@ export default function ThreeBackground() {
         void main() {
           // Subtle motion so the band breathes slightly (clamped very low at bottom)
           float wave = sin(u_time * 0.6) * 0.5 + cos((u_time * 0.4) + v_uv.x * 5.5) * 0.5;
-          float yStart = clamp(u_yellowStart + u_animAmp * wave, 0.85, 0.98);
-          float yEnd   = clamp(u_yellowEnd   + u_animAmp * wave, yStart + 0.005, 1.0);
+          // Effective coordinates (top band only; bottom uses separate white fade)
+          float yStartTop = clamp(u_topStart + u_animAmp * wave, 0.0, 1.0);
+          float yEndTop   = clamp(max(u_topEnd + u_animAmp * wave, yStartTop + 0.005), 0.0, 1.0);
 
-          float t = clamp(v_uv.y + (sin(u_time * 0.10 + v_uv.y * 2.5) * 0.005), 0.0, 1.0);
-          vec3 col = warmGradient(t, yStart, yEnd);
+          // Top band sampling with its own breathing
+          float yTop = v_uv.y;
+          float tTop = clamp(yTop + (sin(u_time * 0.10 + yTop * 2.5) * 0.005), 0.0, 1.0);
+          vec3 colTop = warmGradient(tTop, yStartTop, yEndTop);
+          // Bottom white gradient independent of the top band:
+          float yB = 1.0 - v_uv.y; // 0 at top, 1 at bottom
+          // Use same breathing motion as top (or custom amp if unlinked)
+          float bAmp = mix(u_bottomAnimAmp, u_animAmp, step(0.5, u_linkBottomMotion));
+          float bwStart = clamp(u_bottomWhiteStart + bAmp * wave, 0.0, 1.0);
+          float bwEnd   = clamp(max(u_bottomWhiteEnd + bAmp * wave, bwStart + 0.005), 0.0, 1.0);
+          float sB = smoothstep(bwStart, bwEnd, yB);
+          vec3 bottomWhite = mix(vec3(0.0), u_bottomWhiteColor, sB);
+          // Compose: keep top, fade to white near the bottom
+          vec3 col = mix(colTop, bottomWhite, sB);
+
+          // Debug overlay: show our notion of top/mid/bottom and coordinate bars
+          if (u_debugAxis > 0.5) {
+            float y = v_uv.y;
+            float lw = 0.004;
+            float lTop = 1.0 - smoothstep(0.0, lw, abs(y - 0.95));
+            float lMid = 1.0 - smoothstep(0.0, lw, abs(y - 0.50));
+            float lBot = 1.0 - smoothstep(0.0, lw, abs(y - 0.05));
+            vec3 guide = vec3(0.0);
+            guide += vec3(1.0, 0.2, 0.2) * lTop; // red-ish near "top" for v_uv.y
+            guide += vec3(0.2, 1.0, 0.2) * lMid; // green middle
+            guide += vec3(0.2, 0.6, 1.0) * lBot; // blue near "bottom" for v_uv.y
+            col = clamp(col + guide, 0.0, 1.0);
+
+            // Left bar: grayscale showing v_uv.y (0..1)
+            if (v_uv.x < 0.02) {
+              float g = y;
+              vec3 leftBar = vec3(g);
+              col = mix(col, leftBar, 0.85);
+            }
+            // Right bar: red channel showing 1 - v_uv.y (our "distance from bottom")
+            if (v_uv.x > 0.98) {
+              float rb = 1.0 - y;
+              vec3 rightBar = vec3(rb, 0.1, 0.1);
+              col = mix(col, rightBar, 0.85);
+            }
+          }
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -122,6 +179,10 @@ export default function ThreeBackground() {
       const detail = (e as CustomEvent).detail as {
         c3?: string; c4?: string; c5?: string;
         yellowStart?: number; yellowEnd?: number; animAmp?: number;
+        topStart?: number; topEnd?: number;
+        bottomWhiteStart?: number; bottomWhiteEnd?: number; bottomWhiteColor?: string;
+        bottomAnimAmp?: number; linkBottomMotion?: number;
+        debugAxis?: number;
       };
       if (!detail) return;
       if (detail.c3) {
@@ -144,6 +205,31 @@ export default function ThreeBackground() {
       }
       if (typeof detail.animAmp === "number") {
         uniforms.u_animAmp.value = detail.animAmp;
+      }
+      if (typeof detail.topStart === "number") {
+        uniforms.u_topStart.value = detail.topStart;
+      }
+      if (typeof detail.topEnd === "number") {
+        uniforms.u_topEnd.value = detail.topEnd;
+      }
+      if (typeof detail.bottomWhiteStart === "number") {
+        uniforms.u_bottomWhiteStart.value = detail.bottomWhiteStart;
+      }
+      if (typeof detail.bottomWhiteEnd === "number") {
+        uniforms.u_bottomWhiteEnd.value = detail.bottomWhiteEnd;
+      }
+      if (typeof detail.bottomWhiteColor === "string") {
+        const [r,g,b] = hexToRgb01(detail.bottomWhiteColor);
+        (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(r, g, b);
+      }
+      if (typeof detail.bottomAnimAmp === "number") {
+        uniforms.u_bottomAnimAmp.value = detail.bottomAnimAmp;
+      }
+      if (typeof detail.linkBottomMotion === "number") {
+        uniforms.u_linkBottomMotion.value = detail.linkBottomMotion;
+      }
+      if (typeof detail.debugAxis === "number") {
+        uniforms.u_debugAxis.value = detail.debugAxis;
       }
     }
     window.addEventListener("bg-gradient:update", onUpdate as EventListener);
