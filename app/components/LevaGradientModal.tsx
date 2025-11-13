@@ -16,11 +16,18 @@ function uid() {
 export default function LevaGradientModal() {
   const store = useCreateStore();
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [transparentStart, setTransparentStart] = useState<number>(71);
+  const [transparentStart, setTransparentStart] = useState<number>(80);
   const [stops, setStops] = useState<GradientStop[]>([
-    { id: uid(), color: "#373215", position: 82 },
-    { id: uid(), color: "#fff4b8", position: 100 },
+    { id: uid(), color: "#191603", position: 82 },
+    { id: uid(), color: "#fffef8", position: 100 },
   ]);
+  // Background (WebGL) editor state
+  const [c3, setC3] = useState<string>("#000000"); // dark-ochre (black)
+  const [c4, setC4] = useState<string>("#0d0a02"); // very dark brown
+  const [c5, setC5] = useState<string>("#f6f0d5"); // light warm yellow
+  const [yellowStart, setYellowStart] = useState<number>(85.0); // %
+  const [yellowEnd, setYellowEnd] = useState<number>(92.6); // %
+  const [animAmp, setAnimAmp] = useState<number>(4.45); // %
 
   const gradientCss = useMemo(() => {
     const sorted = [...stops].sort((a, b) => a.position - b.position);
@@ -32,6 +39,21 @@ export default function LevaGradientModal() {
   useEffect(() => {
     document.documentElement.style.setProperty("--gradient", gradientCss);
   }, [gradientCss]);
+
+  // Push updates to the WebGL background (normalized 0-1 where needed)
+  useEffect(() => {
+    const event = new CustomEvent("bg-gradient:update", {
+      detail: {
+        c3,
+        c4,
+        c5,
+        yellowStart: Math.min(0.995, Math.max(0.80, yellowStart / 100)),
+        yellowEnd: Math.min(1.0, Math.max(0.805, yellowEnd / 100)),
+        animAmp: Math.max(0.0, animAmp / 100),
+      },
+    });
+    window.dispatchEvent(event);
+  }, [c3, c4, c5, yellowStart, yellowEnd, animAmp]);
 
   function updateStop(id: string, patch: Partial<GradientStop>) {
     setStops((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -47,11 +69,19 @@ export default function LevaGradientModal() {
     setStops((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   }
   function resetDefaults() {
-    setTransparentStart(71);
+    setTransparentStart(80);
     setStops([
-      { id: uid(), color: "#373215", position: 82 },
-      { id: uid(), color: "#fff4b8", position: 100 },
+      { id: uid(), color: "#191603", position: 82 },
+      { id: uid(), color: "#fffef8", position: 100 },
     ]);
+  }
+  function resetBackground() {
+    setC3("#000000");
+    setC4("#0d0a02");
+    setC5("#f6f0d5");
+    setYellowStart(85.0);
+    setYellowEnd(92.6);
+    setAnimAmp(4.45);
   }
 
   useControls(
@@ -63,6 +93,42 @@ export default function LevaGradientModal() {
           max: 100,
           onChange: (v: number) => setTransparentStart(v),
         },
+        "Background (3D)": folder(
+          {
+            "Dark-ochre (c3)": {
+              value: c3,
+              onChange: (v: string) => setC3(v),
+            },
+            "Gold (c4)": {
+              value: c4,
+              onChange: (v: string) => setC4(v),
+            },
+            "Light yellow (c5)": {
+              value: c5,
+              onChange: (v: string) => setC5(v),
+            },
+            "Yellow start (%)": {
+              value: yellowStart,
+              min: 80,
+              max: 99.5,
+              onChange: (v: number) => setYellowStart(v),
+            },
+            "Yellow end (%)": {
+              value: yellowEnd,
+              min: 81,
+              max: 100,
+              onChange: (v: number) => setYellowEnd(v),
+            },
+            "Breath amp (%)": {
+              value: animAmp,
+              min: 0,
+              max: 5,
+              onChange: (v: number) => setAnimAmp(v),
+            },
+            "Reset background": button(resetBackground),
+          },
+          { collapsed: false }
+        ),
         Actions: folder(
           {
             "Add stop": button(addStop),
@@ -93,7 +159,7 @@ export default function LevaGradientModal() {
       return schema;
     },
     { store, collapsed: false },
-    [stops, transparentStart]
+    [stops, transparentStart, c3, c4, c5, yellowStart, yellowEnd, animAmp]
   );
 
   return (

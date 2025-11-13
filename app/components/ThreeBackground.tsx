@@ -11,6 +11,15 @@ export default function ThreeBackground() {
     const container = containerRef.current!;
     if (!container) return;
 
+    function hexToRgb01(hex: string): [number, number, number] {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+      if (!m) return [0, 0, 0];
+      const r = parseInt(m[1], 16) / 255;
+      const g = parseInt(m[2], 16) / 255;
+      const b = parseInt(m[3], 16) / 255;
+      return [r, g, b];
+    }
+
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false, // opaque background
@@ -30,6 +39,17 @@ export default function ThreeBackground() {
       u_resolution: {
         value: new THREE.Vector2(window.innerWidth, window.innerHeight),
       },
+      // color uniforms (editable via Leva)
+      u_c0: { value: new THREE.Color(0x000000) }, // deep black
+      u_c1: { value: new THREE.Color(0x0a0906) }, // very dark brown
+      u_c2: { value: new THREE.Color(0x16130a) }, // dark umber
+      u_c3: { value: new THREE.Color(0x000000) }, // dark-ochre (black)
+      u_c4: { value: new THREE.Color(0x0d0a02) }, // very dark brown
+      u_c5: { value: new THREE.Color(0xf6f0d5) }, // light warm yellow
+      // band controls
+      u_yellowStart: { value: 0.85 },
+      u_yellowEnd: { value: 0.926 },
+      u_animAmp: { value: 0.0445 },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -48,40 +68,38 @@ export default function ThreeBackground() {
         varying vec2 v_uv;
         uniform vec2 u_resolution;
         uniform float u_time;
+        uniform vec3 u_c0, u_c1, u_c2, u_c3, u_c4, u_c5;
+        uniform float u_yellowStart, u_yellowEnd, u_animAmp;
 
         vec3 srgb(float r, float g, float b) { return vec3(r,g,b)/255.0; }
 
-        // Background gradient (black -> olive/coal -> teal -> warm yellow)
-        vec3 bgGradient(float t, float yellowEdge) {
-          vec3 s0 = srgb(0.0, 0.0, 0.0);      // #000000
-          vec3 s1 = srgb(17.0,16.0,4.0);      // #111004
-          vec3 s2 = srgb(18.0,19.0,20.0);     // #121314
-          vec3 s3 = srgb(44.0,56.0,58.0);     // #2C383A
-          vec3 s4 = srgb(62.0,103.0,108.0);   // #3E676C
-          vec3 s5 = srgb(255.0,246.0,221.0);  // #FFF6DD
+        // Warm black-to-gold gradient
+        // Long dark section, then a golden band near the very bottom fading to pale yellow
+        vec3 warmGradient(float t, float yellowStart, float yellowEnd) {
+          // fixed interior stops for the dark section (can be extended later)
+          float t1 = 0.20;
+          float t2 = 0.55;
+          float t3 = 0.80;
 
-          // piecewise stops before yellow
-          if (t < 0.15)      return mix(s0, s1, smoothstep(0.0, 0.15, t));
-          else if (t < 0.40) return mix(s1, s2, smoothstep(0.15, 0.40, t));
-          else if (t < 0.65) return mix(s2, s3, smoothstep(0.40, 0.65, t));
-          else if (t < yellowEdge) return mix(s3, s4, smoothstep(0.65, yellowEdge, t));
-          // yellow region
-          else {
-            float tt = smoothstep(yellowEdge, 1.0, t);
-            return mix(s4, s5, tt);
-          }
+          if (t < t1)       return mix(u_c0, u_c1, smoothstep(0.0, t1, t));
+          else if (t < t2)  return mix(u_c1, u_c2, smoothstep(t1, t2, t));
+          else if (t < t3)  return mix(u_c2, u_c3, smoothstep(t2, t3, t));
+          else if (t < yellowStart) return mix(u_c3, u_c4, smoothstep(t3, yellowStart, t));
+          // golden band to pale yellow
+          float tt = smoothstep(yellowStart, yellowEnd, t);
+          vec3 bandMix = mix(u_c4, u_c5, tt);
+          // after end, hold u_c5
+          return (t <= yellowEnd) ? bandMix : u_c5;
         }
 
         void main() {
-          // Yellow band edge oscillates smoothly over time with slight horizontal variation
-          float baseEdge = 0.90;          // baseline start of yellow band (near bottom)
-          float amp = 0.035;              // amplitude of expansion/contraction
-          float wave = sin(u_time * 0.7) * 0.5 + cos((u_time * 0.45) + v_uv.x * 6.0) * 0.5;
-          float yellowEdge = clamp(baseEdge + amp * wave, 0.80, 0.97);
+          // Subtle motion so the band breathes slightly (clamped very low at bottom)
+          float wave = sin(u_time * 0.6) * 0.5 + cos((u_time * 0.4) + v_uv.x * 5.5) * 0.5;
+          float yStart = clamp(u_yellowStart + u_animAmp * wave, 0.85, 0.98);
+          float yEnd   = clamp(u_yellowEnd   + u_animAmp * wave, yStart + 0.005, 1.0);
 
-          // small breathing along the whole gradient
-          float t = clamp(v_uv.y + (sin(u_time * 0.12 + v_uv.y * 3.0) * 0.01), 0.0, 1.0);
-          vec3 col = bgGradient(t, yellowEdge);
+          float t = clamp(v_uv.y + (sin(u_time * 0.10 + v_uv.y * 2.5) * 0.005), 0.0, 1.0);
+          vec3 col = warmGradient(t, yStart, yEnd);
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -99,6 +117,37 @@ export default function ThreeBackground() {
     resize();
     window.addEventListener("resize", resize);
 
+    // Listen for Leva updates
+    function onUpdate(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        c3?: string; c4?: string; c5?: string;
+        yellowStart?: number; yellowEnd?: number; animAmp?: number;
+      };
+      if (!detail) return;
+      if (detail.c3) {
+        const [r,g,b] = hexToRgb01(detail.c3);
+        (uniforms.u_c3.value as THREE.Color).setRGB(r, g, b);
+      }
+      if (detail.c4) {
+        const [r,g,b] = hexToRgb01(detail.c4);
+        (uniforms.u_c4.value as THREE.Color).setRGB(r, g, b);
+      }
+      if (detail.c5) {
+        const [r,g,b] = hexToRgb01(detail.c5);
+        (uniforms.u_c5.value as THREE.Color).setRGB(r, g, b);
+      }
+      if (typeof detail.yellowStart === "number") {
+        uniforms.u_yellowStart.value = detail.yellowStart;
+      }
+      if (typeof detail.yellowEnd === "number") {
+        uniforms.u_yellowEnd.value = detail.yellowEnd;
+      }
+      if (typeof detail.animAmp === "number") {
+        uniforms.u_animAmp.value = detail.animAmp;
+      }
+    }
+    window.addEventListener("bg-gradient:update", onUpdate as EventListener);
+
     let raf = 0;
     const start = performance.now();
     function animate() {
@@ -111,6 +160,7 @@ export default function ThreeBackground() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
       geometry.dispose();
       material.dispose();
       renderer.dispose();
