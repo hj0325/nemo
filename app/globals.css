@@ -1,8 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --foreground: #ededed;
+  /* Background gradient updated to match the provided design (second image) */
+  --gradient: linear-gradient(
+    180deg,
+    #E4EFFF 0%,
+    #F7829E 2.56%,
+    #0D021E 21.29%,
+    #130745 43.26%,
+    #F7F6F6 84.48%,
+    #A7C2B9 92.84%,
+    #D89DAD 100%
+  );
+  /* Brighter, warm-to-teal gradient for second state */
+  --gradient-bright: linear-gradient(
+    180deg,
+    #f7dbe9 0%,
+    #f3d7c6 20%,
+    #f2e8c4 35%,
+    #efe4bc 45%,
+    #f0e0b1 55%,
+    #d8d7ae 65%,
+    #8eb5b5 78%,
+    #1f3a3f 92%,
+    #0b0f10 100%
+  );
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 @theme inline {
@@ -12,15 +40,73 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Keep the same defaults for dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #000000;
     --foreground: #ededed;
   }
 }
 
 body {
-  background: var(--background);
+  /* Solid black base */
+  background-color: var(--background);
+  /* Three.js handles the gradient background now */
+  background-image: none;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Fade-in utility for the nemo image */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-3s {
+  opacity: 0;
+  animation: fadeIn 3s ease-out forwards;
+}
+
+/* Second screen background (approximate to provided screenshot) */
+.screen-two-bg {
+  background: var(--gradient-bright);
+  background-attachment: fixed;
+}
+
+/* Sliding overlay for gradient moving upward */
+.gradient-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--gradient-bright);
+  transform: translateY(100%);
+  pointer-events: none;
+  will-change: transform;
+  /* Feather the leading edge for a smooth color blend with the underlying gradient */
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 100%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 100%);
+}
+.gradient-overlay.show {
+  transform: translateY(0%);
+  transition: transform 1.2s ease-in-out;
+}
+
+/* WebGL canvas overlay */
+.gl-transition-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Three.js full-screen background canvas container */
+.three-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
