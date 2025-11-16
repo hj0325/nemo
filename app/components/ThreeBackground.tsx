@@ -33,6 +33,43 @@ export default function ThreeBackground() {
       const m = l - c / 2;
       return [r1 + m, g1 + m, b1 + m];
     }
+    function frac(x: number) { return x - Math.floor(x); }
+    function rand(seed: number) {
+      // deterministic pseudo-random in 0..1
+      return frac(Math.sin(seed * 127.1 + 311.7) * 43758.5453123);
+    }
+    function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+    type RGB = [number, number, number];
+    function lerpRGB(a: RGB, b: RGB, t: number): RGB {
+      return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+    }
+    function segPalette(segIndex: number) {
+      // Seeded by segment index – yields '랜덤'하지만 스크롤에 따라 재현 가능한 팔레트
+      const s0 = rand(segIndex * 1.73 + 0.13);
+      const s1 = rand(segIndex * 2.11 + 0.57);
+      const s2 = rand(segIndex * 3.01 + 0.91);
+      const s3 = rand(segIndex * 5.33 + 0.27);
+      // Dark base tint hue around teal/blue/purple region
+      const hd = lerp(170, 280, s0);
+      // Yellow family hue (gold ↔ coral)
+      const hy = lerp(30, 65, s1);
+      // Bottom band complementary-ish hue
+      const hb = (hy + lerp(140, 220, s2)) % 360;
+      // Dark stack
+      const c0: RGB = hslToRgb01(hd, lerp(0.06, 0.18, s3), lerp(0.02, 0.05, s0));
+      const c1: RGB = hslToRgb01(hd, lerp(0.08, 0.22, s0), lerp(0.05, 0.08, s1));
+      const c2: RGB = hslToRgb01(hd, lerp(0.10, 0.28, s1), lerp(0.08, 0.12, s2));
+      const c3: RGB = hslToRgb01(hd, lerp(0.12, 0.34, s2), lerp(0.12, 0.16, s3));
+      // Warm top band
+      const c4: RGB = hslToRgb01(hy, lerp(0.70, 0.90, s0), lerp(0.45, 0.62, s1)); // gold
+      const c5: RGB = hslToRgb01(hy, lerp(0.35, 0.55, s2), lerp(0.78, 0.92, s3)); // pale
+      // Bottom band color
+      const bottom: RGB = hslToRgb01(hb, lerp(0.35, 0.70, s1), lerp(0.80, 0.95, s0));
+      // Band geometry per segment
+      const bwStart = lerp(0.04, 0.16, s2);
+      const bwEnd = Math.min(0.98, bwStart + lerp(0.45, 0.75, s3));
+      return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
+    }
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -86,6 +123,23 @@ export default function ThreeBackground() {
       u_scrollTarget: { value: 0.0 },
       // debug overlay
       u_debugAxis: { value: 0.0 },
+    };
+
+    // Snapshot of initial (original) palette to keep the very first screen unchanged
+    function readRGB(u: any): [number, number, number] {
+      const c = u.value as THREE.Color;
+      return [c.r, c.g, c.b];
+    }
+    const initSnapshot = {
+      c0: readRGB(uniforms.u_c0),
+      c1: readRGB(uniforms.u_c1),
+      c2: readRGB(uniforms.u_c2),
+      c3: readRGB(uniforms.u_c3),
+      c4: readRGB(uniforms.u_c4),
+      c5: readRGB(uniforms.u_c5),
+      bottom: readRGB(uniforms.u_bottomWhiteColor),
+      bwStart: uniforms.u_bottomWhiteStart.value as number,
+      bwEnd: uniforms.u_bottomWhiteEnd.value as number,
     };
 
     const material = new THREE.ShaderMaterial({
@@ -169,11 +223,21 @@ export default function ThreeBackground() {
           float bwEnd   = clamp(max(u_bottomWhiteEnd + bAmp * wave + rise, bwStart + 0.005), 0.0, 1.0);
           float sB = smoothstep(bwStart, bwEnd, yB);
           vec3 bottomWhite = mix(vec3(0.0), u_bottomWhiteColor, sB);
-          // Smooth palette transition: stronger near bottom, eased by progress
+          // Smooth palette transition with region-sensitive response (bottom > mid > top)
           float p = smoothstep(0.0, 1.0, u_scroll);
           float yBottom = 1.0 - v_uv.y;  // 0 top → 1 bottom
-          float falloff = pow(yBottom, 1.6);
-          float wNew = smoothstep(0.0, 1.0, falloff * p);
+          // region gains
+          float gainTop = 0.65;
+          float gainBottom = 1.35;
+          float gainMid = 1.0;
+          // base interpolation from top->bottom
+          float baseGain = mix(gainTop, gainBottom, yBottom);
+          // soft bump around middle band
+          float midBump = smoothstep(0.30, 0.50, yBottom) * (1.0 - smoothstep(0.50, 0.70, yBottom)) * (gainMid - baseGain);
+          float regionGain = clamp(baseGain + midBump, 0.5, 1.5);
+          float localP = clamp(p * regionGain, 0.0, 1.0);
+          float falloff = pow(yBottom, 1.4);
+          float wNew = smoothstep(0.0, 1.0, falloff * localP);
           vec3 colBlend = mix(colOld, colNew, wNew);
           // Compose: palette blend with bottom white overlay rising with scroll
           vec3 col = mix(colBlend, bottomWhite, sB);
@@ -280,13 +344,15 @@ export default function ThreeBackground() {
       }
     }
     window.addEventListener("bg-gradient:update", onUpdate as EventListener);
-    // Disable scroll interaction: fix progress at 0
+    // Progress target from ScrollInteraction (0..1)
     let scrollTarget = 0;
     let scrollDisplayed = 0;
-    function onScroll() {
-      scrollTarget = 0;
-      uniforms.u_scrollTarget.value = 0;
+    function onProgress(e: Event) {
+      const value = (e as CustomEvent).detail as number;
+      scrollTarget = Math.min(1, Math.max(0, Number(value) || 0));
+      (uniforms.u_scrollTarget.value as number) = scrollTarget;
     }
+    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
 
     // Remove swipe interactions (kept off)
 
@@ -294,7 +360,6 @@ export default function ThreeBackground() {
     const start = performance.now();
     // roulette randomize with smooth tween of background + yellows + bottom band
     function randomIn(min: number, max: number) { return Math.random() * (max - min) + min; }
-    type RGB = [number, number, number];
     function genPalette() {
       // base hue for yellows
       const hy = randomIn(30, 65);
@@ -361,9 +426,45 @@ export default function ThreeBackground() {
     window.addEventListener("bg-gradient:randomize", onRandomize as EventListener);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
-      // smooth approach to target progress for natural transition
+      // smooth approach to target progress for natural transition (single lerp in Three)
       scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.08;
       uniforms.u_scroll.value = scrollDisplayed;
+      // Random-like palette driven by scroll progress (segment blend)
+      const segments = 8.0;
+      const sVal = scrollDisplayed * segments;
+      const segA = Math.floor(sVal);
+      const tSeg = sVal - segA;
+      if (scrollDisplayed <= 0.001) {
+        // Keep original initial screen colors when no scroll has happened
+        (uniforms.u_c0.value as THREE.Color).setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
+        (uniforms.u_c1.value as THREE.Color).setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
+        (uniforms.u_c2.value as THREE.Color).setRGB(initSnapshot.c2[0], initSnapshot.c2[1], initSnapshot.c2[2]);
+        (uniforms.u_c3.value as THREE.Color).setRGB(initSnapshot.c3[0], initSnapshot.c3[1], initSnapshot.c3[2]);
+        (uniforms.u_c4.value as THREE.Color).setRGB(initSnapshot.c4[0], initSnapshot.c4[1], initSnapshot.c4[2]);
+        (uniforms.u_c5.value as THREE.Color).setRGB(initSnapshot.c5[0], initSnapshot.c5[1], initSnapshot.c5[2]);
+        (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(initSnapshot.bottom[0], initSnapshot.bottom[1], initSnapshot.bottom[2]);
+        uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
+        uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
+      } else {
+        const palA = segPalette(segA);
+        const palB = segPalette(segA + 1);
+        const c0 = lerpRGB(palA.c0, palB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(c0[0], c0[1], c0[2]);
+        const c1 = lerpRGB(palA.c1, palB.c1, tSeg); (uniforms.u_c1.value as THREE.Color).setRGB(c1[0], c1[1], c1[2]);
+        const c2 = lerpRGB(palA.c2, palB.c2, tSeg); (uniforms.u_c2.value as THREE.Color).setRGB(c2[0], c2[1], c2[2]);
+        const c3 = lerpRGB(palA.c3, palB.c3, tSeg); (uniforms.u_c3.value as THREE.Color).setRGB(c3[0], c3[1], c3[2]);
+        const c4 = lerpRGB(palA.c4, palB.c4, tSeg); (uniforms.u_c4.value as THREE.Color).setRGB(c4[0], c4[1], c4[2]);
+        const c5 = lerpRGB(palA.c5, palB.c5, tSeg); (uniforms.u_c5.value as THREE.Color).setRGB(c5[0], c5[1], c5[2]);
+        const cb = lerpRGB(palA.bottom, palB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
+        uniforms.u_bottomWhiteStart.value = lerp(palA.bwStart, palB.bwStart, tSeg);
+        uniforms.u_bottomWhiteEnd.value = lerp(palA.bwEnd, palB.bwEnd, tSeg);
+      }
+      // Keep target palette equal to current to avoid double-mix; let colors come from JS.
+      (uniforms.u_c0b.value as THREE.Color).copy(uniforms.u_c0.value as THREE.Color);
+      (uniforms.u_c1b.value as THREE.Color).copy(uniforms.u_c1.value as THREE.Color);
+      (uniforms.u_c2b.value as THREE.Color).copy(uniforms.u_c2.value as THREE.Color);
+      (uniforms.u_c3b.value as THREE.Color).copy(uniforms.u_c3.value as THREE.Color);
+      (uniforms.u_c4b.value as THREE.Color).copy(uniforms.u_c4.value as THREE.Color);
+      (uniforms.u_c5b.value as THREE.Color).copy(uniforms.u_c5.value as THREE.Color);
       if (tweenActive) {
         const now = performance.now();
         const t = Math.min(1, (now - tweenStart) / tweenDur);
@@ -380,8 +481,7 @@ export default function ThreeBackground() {
       window.removeEventListener("bg-gradient:randomize", onRandomize as EventListener);
       window.removeEventListener("resize", resize);
       window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
-      window.removeEventListener("scroll", onScroll as EventListener);
-      window.removeEventListener("touchmove", onScroll as EventListener);
+      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
       geometry.dispose();
       material.dispose();
       renderer.dispose();

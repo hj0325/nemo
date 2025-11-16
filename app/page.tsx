@@ -2,6 +2,7 @@ import Image from "next/image";
 import LevaGradientModal from "./components/LevaGradientModal";
 import ThreeBackground from "./components/ThreeBackground";
 import RandomizeButton from "./components/RandomizeButton";
+import ScrollInteraction from "./components/ScrollInteraction";
 
 export default function Home() {
   return (
@@ -32,6 +33,7 @@ export default function Home() {
       </section>
       {/* Randomize (roulette) button */}
       <RandomizeButton />
+      <ScrollInteraction />
       <LevaGradientModal />
     </main>
   );
