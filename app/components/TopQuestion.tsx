@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function TopQuestion() {
   const [show, setShow] = useState(false);
   const [text, setText] = useState("하루 중 어떤 시간에 휴식이 필요하신가요?");
   const [stage, setStage] = useState<1 | 2 | 3>(1);
+  const currentStageRef = useRef<1 | 2 | 3>(1);
+
+  useEffect(() => {
+    // keep ref in sync to avoid stale closure in event handlers
+    currentStageRef.current = stage;
+  }, [stage]);
 
   useEffect(() => {
     function onProgress(e: Event) {
@@ -16,19 +22,22 @@ export default function TopQuestion() {
       // change text after flash finishes (~1100ms) and show again
       setShow(false);
       setTimeout(() => {
-        if (stage === 1) {
+        const s = currentStageRef.current;
+        if (s === 1) {
           // move to stage 2 question
           setText("창밖에 어떤 빛이 보였으면 좋겠나요?");
           setShow(true);
           setStage(2);
+          currentStageRef.current = 2;
           window.dispatchEvent(new CustomEvent("bg-gradient:stage2"));
           // ensure scroll interaction is enabled again for stage 2
           window.dispatchEvent(new CustomEvent("bg-gradient:enable-scroll"));
-        } else if (stage === 2) {
+        } else if (s === 2) {
           // move to stage 3 question
           setText("휴식의 순간, 당신은 어떤 감정을 느끼고 싶나요?");
           setShow(true);
           setStage(3);
+          currentStageRef.current = 3;
           window.dispatchEvent(new CustomEvent("bg-gradient:stage3"));
         } else {
           // stage 3 selected again: keep showing same question

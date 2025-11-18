@@ -124,6 +124,47 @@ export default function ThreeBackground() {
       return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
     }
 
+    // Fully random palette per segment, seeded by segIndex (smoothly blended between segments)
+    function segPaletteRandom(segIndex: number) {
+      const s0 = rand(segIndex * 1.11 + 0.17);
+      const s1 = rand(segIndex * 2.23 + 0.29);
+      const s2 = rand(segIndex * 3.47 + 0.41);
+      const s3 = rand(segIndex * 5.89 + 0.13);
+      const hBase = (360.0 * s0) % 360;
+      const c0: RGB = hslToRgb01(hBase, lerp(0.05, 0.20, s1), lerp(0.02, 0.06, s2));
+      const c1: RGB = hslToRgb01(hBase, lerp(0.10, 0.30, s2), lerp(0.05, 0.10, s3));
+      const c2: RGB = hslToRgb01(hBase, lerp(0.15, 0.40, s3), lerp(0.10, 0.18, s0));
+      const c3: RGB = hslToRgb01(hBase, lerp(0.20, 0.50, s0), lerp(0.15, 0.25, s1));
+      const c4: RGB = hslToRgb01(hBase, lerp(0.50, 0.90, s1), lerp(0.55, 0.80, s2));
+      const c5: RGB = hslToRgb01(hBase, lerp(0.30, 0.60, s3), lerp(0.80, 0.96, s0));
+      const bottom: RGB = hslToRgb01(hBase, lerp(0.35, 0.75, s2), lerp(0.82, 0.96, s3));
+      const bwStart = lerp(0.05, 0.18, s2);
+      const bwEnd = Math.min(0.98, bwStart + lerp(0.40, 0.80, s1));
+      return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
+    }
+    // Calmer random palette: lower saturation, softer contrasts, slightly higher lightness
+    function segPaletteRandomCalm(segIndex: number) {
+      const s0 = rand(segIndex * 1.13 + 0.07);
+      const s1 = rand(segIndex * 2.19 + 0.31);
+      const s2 = rand(segIndex * 3.41 + 0.59);
+      const s3 = rand(segIndex * 5.17 + 0.23);
+      const hBase = (360.0 * s0) % 360;
+      // dark stack: gently tinted, very low saturation and low lightness
+      const c0: RGB = hslToRgb01(hBase, lerp(0.04, 0.10, s1), lerp(0.04, 0.07, s2));
+      const c1: RGB = hslToRgb01(hBase, lerp(0.05, 0.12, s2), lerp(0.06, 0.10, s3));
+      const c2: RGB = hslToRgb01(hBase, lerp(0.06, 0.16, s3), lerp(0.10, 0.16, s0));
+      const c3: RGB = hslToRgb01(hBase, lerp(0.08, 0.20, s0), lerp(0.14, 0.22, s1));
+      // top light stack: pastel-like, low-to-mid saturation, higher lightness
+      const c4: RGB = hslToRgb01(hBase, lerp(0.18, 0.38, s1), lerp(0.62, 0.78, s2));
+      const c5: RGB = hslToRgb01(hBase, lerp(0.12, 0.32, s3), lerp(0.78, 0.90, s0));
+      // bottom band: calm complementary-ish hue with muted saturation
+      const hb = (hBase + lerp(120, 220, s2)) % 360;
+      const bottom: RGB = hslToRgb01(hb, lerp(0.18, 0.36, s1), lerp(0.82, 0.94, s3));
+      const bwStart = lerp(0.06, 0.14, s2);
+      const bwEnd = Math.min(0.98, bwStart + lerp(0.45, 0.70, s3));
+      return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
+    }
+
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false, // opaque background
@@ -450,6 +491,9 @@ export default function ThreeBackground() {
     let stage2 = false; // after question changes to '창밖에...'
     let stage2ProgressStart = 0; // progress at the moment stage2 begins
     let stage2PhaseStart = 0;    // phase value at stage2 begin (to detect movement via phase)
+    let stage3 = false; // third question: fully random on scroll
+    let stage3ProgressStart = 0;
+    let stage3PhaseStart = 0;
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -525,23 +569,34 @@ export default function ThreeBackground() {
     window.addEventListener("bg-gradient:phase", onPhase as EventListener);
     function onStage2() {
       stage2 = true;
+      stage3 = false;
       paletteLocked = false; // allow interaction again for stage 2
       phaseAccum = 0;        // start new cycle from beginning (white)
       stage2ProgressStart = scrollDisplayed; // remember current progress to compute delta
       stage2PhaseStart = phaseAccum;
     }
     window.addEventListener("bg-gradient:stage2", onStage2 as EventListener);
+    function onStage3() {
+      // enable fully-random palette cycling on scroll
+      stage3 = true;
+      stage2 = false;
+      paletteLocked = false;
+      phaseAccum = 0;
+      stage3ProgressStart = scrollDisplayed;
+      stage3PhaseStart = phaseAccum;
+    }
+    window.addEventListener("bg-gradient:stage3", onStage3 as EventListener);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
       // smooth approach to target progress for natural transition (single lerp in Three)
       scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.08;
       uniforms.u_scroll.value = scrollDisplayed;
       // Random-like palette driven by scroll progress (segment blend)
-      const segments = stage2 ? 9.0 : 8.0;
+      const segments = stage3 ? 12.0 : (stage2 ? 9.0 : 8.0);
       const sVal = (scrollDisplayed + phaseAccum) * segments;
       const segA = Math.floor(sVal);
       const tSeg = sVal - segA;
-      if (scrollDisplayed <= 0.001 && !stage2) {
+      if (scrollDisplayed <= 0.001 && !stage2 && !stage3) {
         // Keep original initial screen colors when no scroll has happened
         (uniforms.u_c0.value as THREE.Color).setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
         (uniforms.u_c1.value as THREE.Color).setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
@@ -583,6 +638,79 @@ export default function ThreeBackground() {
           uniforms.u_bottomWhiteStart.value = lerp(palA.bwStart, palB.bwStart, tSeg);
           uniforms.u_bottomWhiteEnd.value = lerp(palA.bwEnd, palB.bwEnd, tSeg);
         }
+      } else if (stage3 && selectedSnapshot && !paletteLocked) {
+        // Stage3: keep the selected colors until any movement is detected.
+        const deltaProgress = Math.abs(scrollDisplayed - stage3ProgressStart);
+        const deltaPhase = Math.abs(phaseAccum - stage3PhaseStart);
+        const moved = (deltaProgress + deltaPhase) > 0.002;
+        if (!moved) {
+          // hold selected snapshot for both top band and background palettes
+          (uniforms.u_c0.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
+          (uniforms.u_c1.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
+          (uniforms.u_c2.value as THREE.Color).setRGB(selectedSnapshot.c2[0], selectedSnapshot.c2[1], selectedSnapshot.c2[2]);
+          (uniforms.u_c3.value as THREE.Color).setRGB(selectedSnapshot.c3[0], selectedSnapshot.c3[1], selectedSnapshot.c3[2]);
+          (uniforms.u_c4.value as THREE.Color).setRGB(selectedSnapshot.c4[0], selectedSnapshot.c4[1], selectedSnapshot.c4[2]);
+          (uniforms.u_c5.value as THREE.Color).setRGB(selectedSnapshot.c5[0], selectedSnapshot.c5[1], selectedSnapshot.c5[2]);
+          (uniforms.u_c0b.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
+          (uniforms.u_c1b.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
+          (uniforms.u_c2b.value as THREE.Color).setRGB(selectedSnapshot.c2[0], selectedSnapshot.c2[1], selectedSnapshot.c2[2]);
+          (uniforms.u_c3b.value as THREE.Color).setRGB(selectedSnapshot.c3[0], selectedSnapshot.c3[1], selectedSnapshot.c3[2]);
+          (uniforms.u_c4b.value as THREE.Color).setRGB(selectedSnapshot.c4[0], selectedSnapshot.c4[1], selectedSnapshot.c4[2]);
+          (uniforms.u_c5b.value as THREE.Color).setRGB(selectedSnapshot.c5[0], selectedSnapshot.c5[1], selectedSnapshot.c5[2]);
+          (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(selectedSnapshot.bottom[0], selectedSnapshot.bottom[1], selectedSnapshot.bottom[2]);
+          uniforms.u_bottomWhiteStart.value = selectedSnapshot.bwStart;
+          uniforms.u_bottomWhiteEnd.value = selectedSnapshot.bwEnd;
+        } else {
+          // Stage3 movement detected: switch to calm random palettes with separate top/bg
+          const palTopA = segPaletteRandomCalm(segA * 2);
+          const palTopB = segPaletteRandomCalm(segA * 2 + 1);
+          const palBgA  = segPaletteRandomCalm(1000 + segA * 2);
+          const palBgB  = segPaletteRandomCalm(1000 + segA * 2 + 1);
+          // Top breathing band colors (u_c*)
+          const t0 = lerpRGB(palTopA.c0, palTopB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(t0[0], t0[1], t0[2]);
+          const t1 = lerpRGB(palTopA.c1, palTopB.c1, tSeg); (uniforms.u_c1.value as THREE.Color).setRGB(t1[0], t1[1], t1[2]);
+          const t2 = lerpRGB(palTopA.c2, palTopB.c2, tSeg); (uniforms.u_c2.value as THREE.Color).setRGB(t2[0], t2[1], t2[2]);
+          const t3 = lerpRGB(palTopA.c3, palTopB.c3, tSeg); (uniforms.u_c3.value as THREE.Color).setRGB(t3[0], t3[1], t3[2]);
+          const t4 = lerpRGB(palTopA.c4, palTopB.c4, tSeg); (uniforms.u_c4.value as THREE.Color).setRGB(t4[0], t4[1], t4[2]);
+          const t5 = lerpRGB(palTopA.c5, palTopB.c5, tSeg); (uniforms.u_c5.value as THREE.Color).setRGB(t5[0], t5[1], t5[2]);
+          // Background gradient colors (u_c*b)
+          const b0 = lerpRGB(palBgA.c0, palBgB.c0, tSeg); (uniforms.u_c0b.value as THREE.Color).setRGB(b0[0], b0[1], b0[2]);
+          const b1 = lerpRGB(palBgA.c1, palBgB.c1, tSeg); (uniforms.u_c1b.value as THREE.Color).setRGB(b1[0], b1[1], b1[2]);
+          const b2 = lerpRGB(palBgA.c2, palBgB.c2, tSeg); (uniforms.u_c2b.value as THREE.Color).setRGB(b2[0], b2[1], b2[2]);
+          const b3 = lerpRGB(palBgA.c3, palBgB.c3, tSeg); (uniforms.u_c3b.value as THREE.Color).setRGB(b3[0], b3[1], b3[2]);
+          const b4 = lerpRGB(palBgA.c4, palBgB.c4, tSeg); (uniforms.u_c4b.value as THREE.Color).setRGB(b4[0], b4[1], b4[2]);
+          const b5 = lerpRGB(palBgA.c5, palBgB.c5, tSeg); (uniforms.u_c5b.value as THREE.Color).setRGB(b5[0], b5[1], b5[2]);
+          // Bottom band aligned to background palette
+          const cb = lerpRGB(palBgA.bottom, palBgB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
+          uniforms.u_bottomWhiteStart.value = lerp(palBgA.bwStart, palBgB.bwStart, tSeg);
+          uniforms.u_bottomWhiteEnd.value = lerp(palBgA.bwEnd, palBgB.bwEnd, tSeg);
+        }
+      } else if (stage3 && !paletteLocked) {
+        // Stage3: fully random palette blended by segments, with DIFFERENT palettes
+        // for the top breathing band (u_c*) vs the background (u_c*b).
+        // Use distinct seeded indices to ensure different hues per segment for band vs bg.
+        const palTopA = segPaletteRandomCalm(segA * 2);
+        const palTopB = segPaletteRandomCalm(segA * 2 + 1);
+        const palBgA  = segPaletteRandomCalm(1000 + segA * 2);
+        const palBgB  = segPaletteRandomCalm(1000 + segA * 2 + 1);
+        // Top breathing band colors (u_c*)
+        const t0 = lerpRGB(palTopA.c0, palTopB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(t0[0], t0[1], t0[2]);
+        const t1 = lerpRGB(palTopA.c1, palTopB.c1, tSeg); (uniforms.u_c1.value as THREE.Color).setRGB(t1[0], t1[1], t1[2]);
+        const t2 = lerpRGB(palTopA.c2, palTopB.c2, tSeg); (uniforms.u_c2.value as THREE.Color).setRGB(t2[0], t2[1], t2[2]);
+        const t3 = lerpRGB(palTopA.c3, palTopB.c3, tSeg); (uniforms.u_c3.value as THREE.Color).setRGB(t3[0], t3[1], t3[2]);
+        const t4 = lerpRGB(palTopA.c4, palTopB.c4, tSeg); (uniforms.u_c4.value as THREE.Color).setRGB(t4[0], t4[1], t4[2]);
+        const t5 = lerpRGB(palTopA.c5, palTopB.c5, tSeg); (uniforms.u_c5.value as THREE.Color).setRGB(t5[0], t5[1], t5[2]);
+        // Background gradient colors (u_c*b)
+        const b0 = lerpRGB(palBgA.c0, palBgB.c0, tSeg); (uniforms.u_c0b.value as THREE.Color).setRGB(b0[0], b0[1], b0[2]);
+        const b1 = lerpRGB(palBgA.c1, palBgB.c1, tSeg); (uniforms.u_c1b.value as THREE.Color).setRGB(b1[0], b1[1], b1[2]);
+        const b2 = lerpRGB(palBgA.c2, palBgB.c2, tSeg); (uniforms.u_c2b.value as THREE.Color).setRGB(b2[0], b2[1], b2[2]);
+        const b3 = lerpRGB(palBgA.c3, palBgB.c3, tSeg); (uniforms.u_c3b.value as THREE.Color).setRGB(b3[0], b3[1], b3[2]);
+        const b4 = lerpRGB(palBgA.c4, palBgB.c4, tSeg); (uniforms.u_c4b.value as THREE.Color).setRGB(b4[0], b4[1], b4[2]);
+        const b5 = lerpRGB(palBgA.c5, palBgB.c5, tSeg); (uniforms.u_c5b.value as THREE.Color).setRGB(b5[0], b5[1], b5[2]);
+        // Bottom white band derived from background palette
+        const cb = lerpRGB(palBgA.bottom, palBgB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
+        uniforms.u_bottomWhiteStart.value = lerp(palBgA.bwStart, palBgB.bwStart, tSeg);
+        uniforms.u_bottomWhiteEnd.value = lerp(palBgA.bwEnd, palBgB.bwEnd, tSeg);
       } else if (!paletteLocked) {
         const palA = stage2 ? segPaletteStage2(segA) : segPalette(segA);
         const palB = stage2 ? segPaletteStage2(segA + 1) : segPalette(segA + 1);
@@ -598,13 +726,15 @@ export default function ThreeBackground() {
       } else {
         // palette locked: keep current uniforms as-is (no dynamic changes)
       }
-      // Keep target palette equal to current to avoid double-mix; let colors come from JS.
-      (uniforms.u_c0b.value as THREE.Color).copy(uniforms.u_c0.value as THREE.Color);
-      (uniforms.u_c1b.value as THREE.Color).copy(uniforms.u_c1.value as THREE.Color);
-      (uniforms.u_c2b.value as THREE.Color).copy(uniforms.u_c2.value as THREE.Color);
-      (uniforms.u_c3b.value as THREE.Color).copy(uniforms.u_c3.value as THREE.Color);
-      (uniforms.u_c4b.value as THREE.Color).copy(uniforms.u_c4.value as THREE.Color);
-      (uniforms.u_c5b.value as THREE.Color).copy(uniforms.u_c5.value as THREE.Color);
+      // Keep target palette equal to current for non-stage3 to avoid double-mix.
+      if (!stage3) {
+        (uniforms.u_c0b.value as THREE.Color).copy(uniforms.u_c0.value as THREE.Color);
+        (uniforms.u_c1b.value as THREE.Color).copy(uniforms.u_c1.value as THREE.Color);
+        (uniforms.u_c2b.value as THREE.Color).copy(uniforms.u_c2.value as THREE.Color);
+        (uniforms.u_c3b.value as THREE.Color).copy(uniforms.u_c3.value as THREE.Color);
+        (uniforms.u_c4b.value as THREE.Color).copy(uniforms.u_c4.value as THREE.Color);
+        (uniforms.u_c5b.value as THREE.Color).copy(uniforms.u_c5.value as THREE.Color);
+      }
       if (tweenActive) {
         const now = performance.now();
         const t = Math.min(1, (now - tweenStart) / tweenDur);
@@ -622,6 +752,7 @@ export default function ThreeBackground() {
       window.removeEventListener("bg-gradient:select", onSelect as EventListener);
       window.removeEventListener("bg-gradient:phase", onPhase as EventListener);
       window.removeEventListener("bg-gradient:stage2", onStage2 as EventListener);
+      window.removeEventListener("bg-gradient:stage3", onStage3 as EventListener);
       window.removeEventListener("resize", resize);
       window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
       window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
