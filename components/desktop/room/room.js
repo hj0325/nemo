@@ -381,6 +381,21 @@ export default function Room(props) {
             scene.add(virtual);
             anchor = virtual;
           }
+          // Prepare grid images from localStorage to show user's last selection
+          let gridImgs = [];
+          try {
+            const raw = localStorage.getItem("nemo_grid_images");
+            const arr = raw ? JSON.parse(raw) : null;
+            if (Array.isArray(arr) && arr.length >= 9) {
+              gridImgs = arr.slice(0, 9);
+            } else {
+              const last = localStorage.getItem("nemo_last_image");
+              if (last) gridImgs = Array.from({ length: 9 }).map(() => last);
+            }
+          } catch {}
+          if (gridImgs.length === 0) {
+            gridImgs = Array.from({ length: 9 }).map(() => "/2d/nemo.png");
+          }
           const iframe = document.createElement("iframe");
           iframe.setAttribute("title", "screen");
           iframe.style.border = "0";
@@ -408,19 +423,10 @@ export default function Room(props) {
         display:flex; align-items:center; justify-content:center;
         overflow:hidden;
       }
-      .wrap {
-        position:relative;
-        width:100%; height:100%;
-        display:flex; align-items:center; justify-content:center;
-        filter: contrast(1.05) saturate(0.9);
-      }
-      img.nemo {
-        max-width:90%;
-        max-height:90%;
-        image-rendering: pixelated;
-        filter: grayscale(12%) brightness(1.05);
-        animation: float 3.6s ease-in-out infinite, flicker 6s steps(2,end) infinite;
-      }
+      .wrap { position:relative; width:100%; height:100%; display:grid;
+        grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px; }
+      .cell { position:relative; width:100%; height:100%; overflow:hidden; }
+      .cell img { width:100%; height:100%; object-fit:cover; display:block; filter: brightness(1.02); }
       /* subtle vertical scanlines */
       .scan {
         position:absolute; inset:0; pointer-events:none; opacity:.12;
@@ -450,7 +456,7 @@ export default function Room(props) {
   </head>
   <body>
     <div class="wrap">
-      <img class="nemo" src="/2d/nemo.png" alt="nemo" />
+      ${gridImgs.map((src, i) => `<div class="cell"><img src="${src}" alt="img_${i}" /></div>`).join("")}
       <div class="scan"></div>
     </div>
   </body>

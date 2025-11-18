@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -7,6 +7,19 @@ export default function HouseViewerPage() {
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const [lastImage, setLastImage] = useState(null);
+
+  useEffect(() => {
+    try {
+      const src = localStorage.getItem("nemo_last_image");
+      if (src) setLastImage(src);
+      const onStorage = (e) => {
+        if (e.key === "nemo_last_image" && e.newValue) setLastImage(e.newValue);
+      };
+      window.addEventListener("storage", onStorage);
+      return () => window.removeEventListener("storage", onStorage);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -50,7 +63,7 @@ export default function HouseViewerPage() {
     let modelRoot = null;
 
     loader.load(
-      '/house.glb',
+      '/3d/house.glb',
       (gltf) => {
         modelRoot = gltf.scene || gltf.scenes[0];
         scene.add(modelRoot);
@@ -166,16 +179,37 @@ export default function HouseViewerPage() {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    />
+    <div style={{ position: 'relative' }}>
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      />
+      {lastImage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: 12,
+            width: 300,
+            height: 170,
+            border: '1px solid #2a2f3a',
+            boxShadow: '0 6px 24px rgba(0,0,0,.35)',
+            background: '#0b0d12',
+            overflow: 'hidden',
+            zIndex: 6,
+          }}
+          title="선택된 이미지 미리보기"
+        >
+          <img src={lastImage} alt="selected" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/router";
 import LandingVideoCRT from "@/components/desktop/page2/LandingVideoCRT";
 import WindowsScatter from "@/components/desktop/page2/WindowsScatter";
 import WindowsArrangeTransition from "@/components/desktop/page2/WindowsArrangeTransition";
 import WindowsArrangeGrid from "@/components/desktop/page2/WindowsArrangeGrid";
 import CenterPrompt from "@/components/desktop/page2/CenterPrompt";
+import FadeOverlay from "@/components/desktop/page2/FadeOverlay";
+import EdgeNav from "@/components/desktop/page2/EdgeNav";
 
 export default function Page2() {
   const [show, setShow] = useState(false);
   const vidRef = useRef(null);
   const [fadeVideo, setFadeVideo] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [showWindows, setShowWindows] = useState(false);
   const [stage, setStage] = useState(0); // 0: video, 1: prompt, 2: windows
+  const router = useRouter();
   const autoTimerRef = useRef(null);
   const promptTimerRef = useRef(null);
   const questionTimerRef = useRef(null);
@@ -23,6 +28,35 @@ export default function Page2() {
   const [transitionStart, setTransitionStart] = useState(false);
   const [survivors, setSurvivors] = useState([]); // indices to keep (9)
   const [targets, setTargets] = useState([]); // target rects for survivors
+  // Color mood set (applied as overlay/filter to unify tone)
+  const moods = useMemo(
+    () => [
+      // Stronger overlays + filters to better unify tone across all tiles
+      { name: "warm",    overlay: "rgba(255,150,90,0.36)",  filter: "saturate(1.18) contrast(1.08) hue-rotate(12deg) brightness(1.02)" },
+      { name: "cool",    overlay: "rgba(90,160,255,0.34)",  filter: "saturate(1.12) contrast(1.07) hue-rotate(-14deg) brightness(1.02)" },
+      { name: "forest",  overlay: "rgba(70,180,120,0.34)",  filter: "saturate(1.2) contrast(1.06) hue-rotate(28deg)" },
+      { name: "violet",  overlay: "rgba(150,110,255,0.34)", filter: "saturate(1.18) contrast(1.08) hue-rotate(260deg)" },
+      { name: "gold",    overlay: "rgba(255,210,90,0.34)",  filter: "saturate(1.22) contrast(1.08) hue-rotate(6deg) brightness(1.03)" },
+      { name: "teal",    overlay: "rgba(70,210,200,0.32)",  filter: "saturate(1.15) contrast(1.06) hue-rotate(180deg)" },
+      { name: "rose",    overlay: "rgba(255,120,160,0.34)", filter: "saturate(1.22) contrast(1.07) hue-rotate(318deg)" },
+      { name: "mono",    overlay: "rgba(0,0,0,0.12)",       filter: "grayscale(0.75) contrast(1.12) brightness(0.98)" },
+    ],
+    []
+  );
+  const [moodIndex, setMoodIndex] = useState(0);
+  const nextMood = useCallback(() => {
+    setMoodIndex((i) => (i + 1) % Math.max(1, moods.length));
+  }, [moods.length]);
+  const prevMood = useCallback(() => {
+    setMoodIndex((i) => (i - 1 + Math.max(1, moods.length)) % Math.max(1, moods.length));
+  }, [moods.length]);
+  // Scroll pulse direction for arranged grid ("up" | "down" | null) and key to re-trigger animation
+  const [scrollPulseDir, setScrollPulseDir] = useState(null);
+  const [scrollPulseKey, setScrollPulseKey] = useState(0);
+  const triggerPulse = useCallback((dir) => {
+    setScrollPulseDir(dir);
+    setScrollPulseKey((k) => k + 1);
+  }, []);
   const clearTimers = useCallback(() => {
     if (autoTimerRef.current) { clearTimeout(autoTimerRef.current); autoTimerRef.current = null; }
     if (promptTimerRef.current) { clearTimeout(promptTimerRef.current); promptTimerRef.current = null; }
@@ -346,17 +380,7 @@ export default function Page2() {
         onEnded={() => goToStage(1)}
       />
       {/* Fade video to black overlay (after video ended) */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "#000",
-          opacity: fadeVideo ? 1 : 0,
-          transition: "opacity 600ms ease",
-          pointerEvents: "none",
-          zIndex: 4,
-        }}
-      />
+      <FadeOverlay visible={fadeVideo} duration={600} zIndex={4} />
       {/* Prompt message after fade */}
       <CenterPrompt visible={showPrompt}>모바일을 확인하고 슬라이드 하여, 선택해보세요</CenterPrompt>
       {/* Old modal windows montage */}
@@ -371,7 +395,75 @@ export default function Page2() {
         />
       )}
       {/* Arranged grid view */}
-      {showWindows && arranged && <WindowsArrangeGrid windows={windows} survivors={survivors} />}
+      {showWindows && arranged && (
+        <WindowsArrangeGrid
+          windows={windows}
+          survivors={survivors}
+          moods={moods}
+          moodIndex={moodIndex}
+          scrollPulseDir={scrollPulseDir}
+          scrollKey={scrollPulseKey}
+        />
+      )}
+      {/* Keyword up/down buttons (visible only when arranged) */}
+      {showWindows && arranged && (
+        <>
+          <button
+            onClick={() => { prevMood(); triggerPulse("up"); }}
+            style={{
+              position: "absolute",
+              right: 12,
+              top: "38%",
+              transform: "translateY(-50%)",
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid #2a2f3a",
+              background: "rgba(17,19,24,.8)",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              zIndex: 9,
+            }}
+            title="위로 (이전 키워드)"
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => { nextMood(); triggerPulse("down"); }}
+            style={{
+              position: "absolute",
+              right: 12,
+              top: "62%",
+              transform: "translateY(-50%)",
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid #2a2f3a",
+              background: "rgba(17,19,24,.8)",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              zIndex: 9,
+            }}
+            title="아래로 (다음 키워드)"
+          >
+            ↓
+          </button>
+          <div
+            style={{
+              position: "absolute",
+              right: 12,
+              bottom: 12,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #2a2f3a",
+              background: "rgba(17,19,24,.75)",
+              color: "#e5e7eb",
+              fontSize: 12,
+              zIndex: 9,
+            }}
+          >
+            {`무드: ${moods[moodIndex]?.name || ""}`}
+          </div>
+        </>
+      )}
       {/* Center question box after 1s in stage 2 */}
       <CenterPrompt visible={showWindows && !arranged && showQuestion}>당신이 원하는 휴식은 무엇인가요?</CenterPrompt>
       {/* Scroll to arrange (desktop/mobile) */}
@@ -379,52 +471,38 @@ export default function Page2() {
         <ScrollArrange onArrange={triggerArrange} />
       )}
       {/* Edge navigation: Prev / Next */}
-      <button
-        onClick={() => {
+      <EdgeNav
+        onPrev={() => {
           if (stage === 2 && arranged) setArranged(false);
           else goToStage(Math.max(0, stage - 1));
         }}
-        style={{
-          position: "absolute",
-          left: 8,
-          top: "50%",
-          transform: "translateY(-50%)",
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: "1px solid #2a2f3a",
-          background: "rgba(17,19,24,.8)",
-          color: "#e5e7eb",
-          cursor: "pointer",
-          zIndex: 8,
+        onNext={() => {
+          if (stage === 2 && !arranged) {
+            triggerArrange();
+            return;
+          }
+          if (stage === 2 && arranged) {
+            // Persist the last used arranged image (tile 0) for house page
+            try {
+              const mood = moods[(moodIndex % moods.length + moods.length) % moods.length]?.name || "nemo";
+              const src = `https://picsum.photos/seed/${encodeURIComponent(`${mood}-0`)}/1200/800`;
+              localStorage.setItem("nemo_last_image", src);
+              // Persist full 3x3 grid sources for room HTML screen
+              const grid = Array.from({ length: 9 }).map((_, i) =>
+                `https://picsum.photos/seed/${encodeURIComponent(`${mood}-${i}`)}/1200/800`
+              );
+              localStorage.setItem("nemo_grid_images", JSON.stringify(grid));
+            } catch {}
+            // Close-out fade then navigate
+            setClosing(true);
+            setTimeout(() => router.push("/room"), 700);
+            return;
+          }
+          goToStage(Math.min(2, stage + 1));
         }}
-        aria-label="Previous"
-        title="Previous"
-      >
-        이전
-      </button>
-      <button
-        onClick={() => {
-          if (stage === 2 && !arranged) triggerArrange();
-          else goToStage(Math.min(2, stage + 1));
-        }}
-        style={{
-          position: "absolute",
-          right: 8,
-          top: "50%",
-          transform: "translateY(-50%)",
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: "1px solid #2a2f3a",
-          background: "rgba(17,19,24,.8)",
-          color: "#e5e7eb",
-          cursor: "pointer",
-          zIndex: 8,
-        }}
-        aria-label="Next"
-        title="Next"
-      >
-        다음
-      </button>
+      />
+      {/* Final close-out fade */}
+      <FadeOverlay visible={closing} duration={700} zIndex={10} />
     </div>
   );
 }
