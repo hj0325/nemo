@@ -55,12 +55,18 @@ export default function ScrollInteraction() {
       touchStartY.current = null;
     }
 
+    function onDisable() {
+      enabledRef.current = false;
+    }
+    window.addEventListener("bg-gradient:disable-scroll", onDisable as EventListener);
+
     window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("touchstart", onTouchStart, { passive: true });
     window.addEventListener("touchmove", onTouchMove, { passive: true });
     window.addEventListener("touchend", onTouchEnd, { passive: true });
     return () => {
       window.removeEventListener("bg-gradient:enable-scroll", onEnable as EventListener);
+      window.removeEventListener("bg-gradient:disable-scroll", onDisable as EventListener);
       window.removeEventListener("wheel", onWheel as EventListener);
       window.removeEventListener("touchstart", onTouchStart as EventListener);
       window.removeEventListener("touchmove", onTouchMove as EventListener);

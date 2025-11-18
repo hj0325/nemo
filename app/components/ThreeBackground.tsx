@@ -494,6 +494,7 @@ export default function ThreeBackground() {
     let stage3 = false; // third question: fully random on scroll
     let stage3ProgressStart = 0;
     let stage3PhaseStart = 0;
+    let finalTween = false; // transitioning to default palette for final screen
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -586,6 +587,22 @@ export default function ThreeBackground() {
       stage3PhaseStart = phaseAccum;
     }
     window.addEventListener("bg-gradient:stage3", onStage3 as EventListener);
+    function onFinal() {
+      // Transition from current (stage3-selected) colors to default initial palette
+      stage2 = false;
+      stage3 = false;
+      finalTween = true;
+      paletteLocked = true; // freeze dynamic updates during tween
+      captureFrom();
+      toCols.u_c0 = initSnapshot.c0; toCols.u_c1 = initSnapshot.c1; toCols.u_c2 = initSnapshot.c2;
+      toCols.u_c3 = initSnapshot.c3; toCols.u_c4 = initSnapshot.c4; toCols.u_c5 = initSnapshot.c5;
+      toCols.u_bottomWhiteColor = initSnapshot.bottom;
+      toStart = initSnapshot.bwStart; toEnd = initSnapshot.bwEnd;
+      tweenStart = performance.now();
+      tweenDur = 1200;
+      tweenActive = true;
+    }
+    window.addEventListener("bg-gradient:final", onFinal as EventListener);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
       // smooth approach to target progress for natural transition (single lerp in Three)
@@ -739,7 +756,13 @@ export default function ThreeBackground() {
         const now = performance.now();
         const t = Math.min(1, (now - tweenStart) / tweenDur);
         applyLerp(easeInOutCubic(t));
-        if (t >= 1) tweenActive = false;
+        if (t >= 1) {
+          tweenActive = false;
+          if (finalTween) {
+            finalTween = false;
+            // remain paletteLocked at the default colors for the final screen
+          }
+        }
       }
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
@@ -753,6 +776,7 @@ export default function ThreeBackground() {
       window.removeEventListener("bg-gradient:phase", onPhase as EventListener);
       window.removeEventListener("bg-gradient:stage2", onStage2 as EventListener);
       window.removeEventListener("bg-gradient:stage3", onStage3 as EventListener);
+      window.removeEventListener("bg-gradient:final", onFinal as EventListener);
       window.removeEventListener("resize", resize);
       window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
       window.removeEventListener("bg-gradient:progress", onProgress as EventListener);

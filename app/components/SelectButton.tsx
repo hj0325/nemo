@@ -14,11 +14,17 @@ export default function SelectButton() {
       // keep visible after selection as well (no change)
       setShow(true);
     }
+    function onFinal() {
+      // hide button on final screen
+      setShow(false);
+    }
     window.addEventListener("bg-gradient:progress", onProgress as EventListener);
     window.addEventListener("bg-gradient:select", onSelect as EventListener);
+    window.addEventListener("bg-gradient:final", onFinal as EventListener);
     return () => {
       window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
       window.removeEventListener("bg-gradient:select", onSelect as EventListener);
+      window.removeEventListener("bg-gradient:final", onFinal as EventListener);
     };
   }, []);
 

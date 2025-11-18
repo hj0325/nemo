@@ -39,8 +39,12 @@ export default function TopQuestion() {
           setStage(3);
           currentStageRef.current = 3;
           window.dispatchEvent(new CustomEvent("bg-gradient:stage3"));
+        } else if (s === 3) {
+          // final confirm on stage 3: show final screen (no scroll)
+          setShow(false);
+          window.dispatchEvent(new CustomEvent("bg-gradient:disable-scroll"));
+          window.dispatchEvent(new CustomEvent("bg-gradient:final"));
         } else {
-          // stage 3 selected again: keep showing same question
           setShow(true);
         }
       }, 1100);
