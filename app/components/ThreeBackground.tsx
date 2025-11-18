@@ -44,29 +44,35 @@ export default function ThreeBackground() {
       return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
     }
     function segPalette(segIndex: number) {
-      // Seeded by segment index – yields '랜덤'하지만 스크롤에 따라 재현 가능한 팔레트
+      // Seeded randoms (stable per segment)
       const s0 = rand(segIndex * 1.73 + 0.13);
       const s1 = rand(segIndex * 2.11 + 0.57);
       const s2 = rand(segIndex * 3.01 + 0.91);
       const s3 = rand(segIndex * 5.33 + 0.27);
-      // Dark base tint hue around teal/blue/purple region
-      const hd = lerp(170, 280, s0);
-      // Yellow family hue (gold ↔ coral)
-      const hy = lerp(30, 65, s1);
-      // Bottom band complementary-ish hue
-      const hb = (hy + lerp(140, 220, s2)) % 360;
-      // Dark stack
-      const c0: RGB = hslToRgb01(hd, lerp(0.06, 0.18, s3), lerp(0.02, 0.05, s0));
-      const c1: RGB = hslToRgb01(hd, lerp(0.08, 0.22, s0), lerp(0.05, 0.08, s1));
-      const c2: RGB = hslToRgb01(hd, lerp(0.10, 0.28, s1), lerp(0.08, 0.12, s2));
-      const c3: RGB = hslToRgb01(hd, lerp(0.12, 0.34, s2), lerp(0.12, 0.16, s3));
-      // Warm top band
-      const c4: RGB = hslToRgb01(hy, lerp(0.70, 0.90, s0), lerp(0.45, 0.62, s1)); // gold
-      const c5: RGB = hslToRgb01(hy, lerp(0.35, 0.55, s2), lerp(0.78, 0.92, s3)); // pale
-      // Bottom band color
-      const bottom: RGB = hslToRgb01(hb, lerp(0.35, 0.70, s1), lerp(0.80, 0.95, s0));
+
+      // Stage hue order (sky → green → yellow → orange → navy → purple → navy → sky)
+      const baseOrder = [200, 130, 58, 30, 230, 280, 230, 200]; // degrees
+      const idx = ((segIndex % 8) + 8) % 8;
+      // small jitter to feel random while keeping stage
+      const jitter = lerp(-10, 10, s0);
+      const hBase = (baseOrder[idx] + jitter + 360) % 360;
+
+      // Build palette from hBase
+      // Dark stack tinted by hBase
+      const c0: RGB = hslToRgb01(hBase, lerp(0.06, 0.18, s3), lerp(0.02, 0.06, s0));
+      const c1: RGB = hslToRgb01(hBase, lerp(0.10, 0.24, s0), lerp(0.05, 0.09, s1));
+      const c2: RGB = hslToRgb01(hBase, lerp(0.14, 0.30, s1), lerp(0.08, 0.13, s2));
+      const c3: RGB = hslToRgb01(hBase, lerp(0.18, 0.36, s2), lerp(0.12, 0.18, s3));
+
+      // Light stack (top side) aligned to hBase (not always yellow now)
+      const c4: RGB = hslToRgb01(hBase, lerp(0.50, 0.85, s1), lerp(0.55, 0.72, s2));
+      const c5: RGB = hslToRgb01(hBase, lerp(0.30, 0.55, s0), lerp(0.78, 0.92, s3));
+
+      // Bottom band color as brighter variant of hBase
+      const bottom: RGB = hslToRgb01(hBase, lerp(0.35, 0.70, s1), lerp(0.82, 0.96, s0));
+
       // Band geometry per segment
-      const bwStart = lerp(0.04, 0.16, s2);
+      const bwStart = lerp(0.05, 0.16, s2);
       const bwEnd = Math.min(0.98, bwStart + lerp(0.45, 0.75, s3));
       return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
     }
@@ -387,6 +393,8 @@ export default function ThreeBackground() {
     const fromCols: Record<string, RGB> = {} as any;
     const toCols: Record<string, RGB> = {} as any;
     let fromStart = 0, fromEnd = 0, toStart = 0, toEnd = 0;
+    let paletteLocked = false;
+    let phaseAccum = 0; // allows infinite cycling across the 0..1 progress range
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -416,6 +424,7 @@ export default function ThreeBackground() {
     }
     function easeInOutCubic(t: number) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
     function onRandomize() {
+      if (paletteLocked) return;
       const pal = genPalette();
       captureFrom();
       toCols.u_c0 = pal.c0; toCols.u_c1 = pal.c1; toCols.u_c2 = pal.c2; toCols.u_c3 = pal.c3;
@@ -426,6 +435,20 @@ export default function ThreeBackground() {
       tweenActive = true;
     }
     window.addEventListener("bg-gradient:randomize", onRandomize as EventListener);
+    function onSelect() {
+      // lock the current palette and stop further dynamic updates
+      paletteLocked = true;
+      tweenActive = false;
+    }
+    window.addEventListener("bg-gradient:select", onSelect as EventListener);
+    function onPhase(e: Event) {
+      if (paletteLocked) return;
+      const d = Number((e as CustomEvent).detail);
+      if (Number.isFinite(d)) {
+        phaseAccum += d; // can be positive/negative; not clamped to let it cycle
+      }
+    }
+    window.addEventListener("bg-gradient:phase", onPhase as EventListener);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
       // smooth approach to target progress for natural transition (single lerp in Three)
@@ -433,7 +456,7 @@ export default function ThreeBackground() {
       uniforms.u_scroll.value = scrollDisplayed;
       // Random-like palette driven by scroll progress (segment blend)
       const segments = 8.0;
-      const sVal = scrollDisplayed * segments;
+      const sVal = (scrollDisplayed + phaseAccum) * segments;
       const segA = Math.floor(sVal);
       const tSeg = sVal - segA;
       if (scrollDisplayed <= 0.001) {
@@ -447,7 +470,7 @@ export default function ThreeBackground() {
         (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(initSnapshot.bottom[0], initSnapshot.bottom[1], initSnapshot.bottom[2]);
         uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
         uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
-      } else {
+      } else if (!paletteLocked) {
         const palA = segPalette(segA);
         const palB = segPalette(segA + 1);
         const c0 = lerpRGB(palA.c0, palB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(c0[0], c0[1], c0[2]);
@@ -459,6 +482,8 @@ export default function ThreeBackground() {
         const cb = lerpRGB(palA.bottom, palB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
         uniforms.u_bottomWhiteStart.value = lerp(palA.bwStart, palB.bwStart, tSeg);
         uniforms.u_bottomWhiteEnd.value = lerp(palA.bwEnd, palB.bwEnd, tSeg);
+      } else {
+        // palette locked: keep current uniforms as-is (no dynamic changes)
       }
       // Keep target palette equal to current to avoid double-mix; let colors come from JS.
       (uniforms.u_c0b.value as THREE.Color).copy(uniforms.u_c0.value as THREE.Color);
@@ -481,6 +506,8 @@ export default function ThreeBackground() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("bg-gradient:randomize", onRandomize as EventListener);
+      window.removeEventListener("bg-gradient:select", onSelect as EventListener);
+      window.removeEventListener("bg-gradient:phase", onPhase as EventListener);
       window.removeEventListener("resize", resize);
       window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
       window.removeEventListener("bg-gradient:progress", onProgress as EventListener);

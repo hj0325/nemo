@@ -1,9 +1,10 @@
 import Image from "next/image";
 import LevaGradientModal from "./components/LevaGradientModal";
 import ThreeBackground from "./components/ThreeBackground";
-import RandomizeButton from "./components/RandomizeButton";
 import ScrollInteraction from "./components/ScrollInteraction";
 import IntroSequence from "./components/IntroSequence";
+import TopQuestion from "./components/TopQuestion";
+import SelectButton from "./components/SelectButton";
 
 export default function Home() {
   return (
@@ -11,9 +12,10 @@ export default function Home() {
       {/* Three.js background gradient */}
       <ThreeBackground />
       <IntroSequence />
-      {/* Randomize (roulette) button */}
-      <RandomizeButton />
+      {/* Select (fix current background) button */}
+      <SelectButton />
       <ScrollInteraction />
+      <TopQuestion />
       <LevaGradientModal />
     </main>
   );

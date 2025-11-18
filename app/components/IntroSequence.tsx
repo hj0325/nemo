@@ -15,6 +15,8 @@ export default function IntroSequence() {
       const t2 = setTimeout(() => {
         setShowLogo(false);
         setShowCenterHint(true);
+        // enable scroll interaction once the hint appears
+        window.dispatchEvent(new CustomEvent("bg-gradient:enable-scroll"));
       }, 700); // match fade-out duration
       return () => clearTimeout(t2);
     }, 6000);
