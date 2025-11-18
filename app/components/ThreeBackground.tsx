@@ -439,6 +439,13 @@ export default function ThreeBackground() {
       // lock the current palette and stop further dynamic updates
       paletteLocked = true;
       tweenActive = false;
+      // emit flash color (use the current warm top color c4)
+      const cc = (uniforms.u_c4.value as THREE.Color);
+      window.dispatchEvent(
+        new CustomEvent("bg-gradient:flash", {
+          detail: { r: cc.r, g: cc.g, b: cc.b },
+        })
+      );
     }
     window.addEventListener("bg-gradient:select", onSelect as EventListener);
     function onPhase(e: Event) {

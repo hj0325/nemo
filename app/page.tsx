@@ -5,6 +5,7 @@ import ScrollInteraction from "./components/ScrollInteraction";
 import IntroSequence from "./components/IntroSequence";
 import TopQuestion from "./components/TopQuestion";
 import SelectButton from "./components/SelectButton";
+import SelectionFlashOverlay from "./components/SelectionFlashOverlay";
 
 export default function Home() {
   return (
@@ -16,6 +17,7 @@ export default function Home() {
       <SelectButton />
       <ScrollInteraction />
       <TopQuestion />
+      <SelectionFlashOverlay />
       <LevaGradientModal />
     </main>
   );

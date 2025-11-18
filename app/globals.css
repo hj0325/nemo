@@ -100,6 +100,16 @@ body {
   animation: fadeOut 700ms ease-out forwards;
 }
 
+@keyframes flashPulse {
+  0% { opacity: 0 }
+  20% { opacity: 0.65 }
+  100% { opacity: 0 }
+}
+.flash-overlay {
+  opacity: 0;
+  animation: flashPulse 1100ms ease-out forwards;
+}
+
 /* Delayed fade-in for text appearing after the logo */
 .fade-in-delayed {
   opacity: 0;
