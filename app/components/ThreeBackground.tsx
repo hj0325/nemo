@@ -242,6 +242,8 @@ export default function ThreeBackground() {
           // Compose: palette blend with bottom white overlay rising with scroll
           vec3 col = mix(colBlend, bottomWhite, sB);
 
+          // (hint wave removed per design)
+
           // Debug overlay: show our notion of top/mid/bottom and coordinate bars
           if (u_debugAxis > 0.5) {
             float y = v_uv.y;
