@@ -449,6 +449,7 @@ export default function ThreeBackground() {
     let phaseAccum = 0; // allows infinite cycling across the 0..1 progress range
     let stage2 = false; // after question changes to '창밖에...'
     let stage2ProgressStart = 0; // progress at the moment stage2 begins
+    let stage2PhaseStart = 0;    // phase value at stage2 begin (to detect movement via phase)
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -527,6 +528,7 @@ export default function ThreeBackground() {
       paletteLocked = false; // allow interaction again for stage 2
       phaseAccum = 0;        // start new cycle from beginning (white)
       stage2ProgressStart = scrollDisplayed; // remember current progress to compute delta
+      stage2PhaseStart = phaseAccum;
     }
     window.addEventListener("bg-gradient:stage2", onStage2 as EventListener);
     function animate() {
@@ -551,10 +553,12 @@ export default function ThreeBackground() {
         uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
         uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
       } else if (stage2 && selectedSnapshot && !paletteLocked) {
-        // Stage2: hold the previously selected color until the user actually scrolls,
-        // then immediately enter the stage2 color routine (starting at white stage).
-        const delta = scrollDisplayed - stage2ProgressStart;
-        if (delta <= 0.0) {
+        // Stage2: hold the previously selected color until the user actually scrolls
+        // (in ANY direction). Once movement detected, enter the stage2 routine.
+        const deltaProgress = Math.abs(scrollDisplayed - stage2ProgressStart);
+        const deltaPhase = Math.abs(phaseAccum - stage2PhaseStart);
+        const moved = (deltaProgress + deltaPhase) > 0.002; // small epsilon to avoid jitter locking
+        if (!moved) {
           // hold selected colors
           (uniforms.u_c0.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
           (uniforms.u_c1.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
