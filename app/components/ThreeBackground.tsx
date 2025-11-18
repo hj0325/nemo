@@ -445,6 +445,8 @@ export default function ThreeBackground() {
       }
     }
     window.addEventListener("bg-gradient:update", onUpdate as EventListener);
+    // Guard: keep original initial palette until first real scroll happens
+    let initialGuard = true;
     // Progress target from ScrollInteraction (0..1)
     let scrollTarget = 0;
     let scrollDisplayed = 0;
@@ -452,6 +454,9 @@ export default function ThreeBackground() {
       const value = (e as CustomEvent).detail as number;
       scrollTarget = Math.min(1, Math.max(0, Number(value) || 0));
       (uniforms.u_scrollTarget.value as number) = scrollTarget;
+      if (initialGuard && scrollTarget > 0.001) {
+        initialGuard = false;
+      }
     }
     window.addEventListener("bg-gradient:progress", onProgress as EventListener);
 
@@ -495,6 +500,10 @@ export default function ThreeBackground() {
     let stage3ProgressStart = 0;
     let stage3PhaseStart = 0;
     let finalTween = false; // transitioning to default palette for final screen
+    // stage1 (base palette) hold state: keep selected colors until movement after entering stage1
+    let stage1HoldActive = false;
+    let stage1HoldProgressStart = 0;
+    let stage1HoldPhaseStart = 0;
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -577,6 +586,18 @@ export default function ThreeBackground() {
       stage2PhaseStart = phaseAccum;
     }
     window.addEventListener("bg-gradient:stage2", onStage2 as EventListener);
+    function onStage1() {
+      // Switch to base palette logic (formerly stage1 behavior)
+      stage2 = false;
+      stage3 = false;
+      paletteLocked = false;
+      phaseAccum = 0;
+      // start hold of selected colors until movement
+      stage1HoldActive = true;
+      stage1HoldProgressStart = scrollDisplayed;
+      stage1HoldPhaseStart = phaseAccum;
+    }
+    window.addEventListener("bg-gradient:stage1", onStage1 as EventListener);
     function onStage3() {
       // enable fully-random palette cycling on scroll
       stage3 = true;
@@ -613,7 +634,7 @@ export default function ThreeBackground() {
       const sVal = (scrollDisplayed + phaseAccum) * segments;
       const segA = Math.floor(sVal);
       const tSeg = sVal - segA;
-      if (scrollDisplayed <= 0.001 && !stage2 && !stage3) {
+      if (initialGuard) {
         // Keep original initial screen colors when no scroll has happened
         (uniforms.u_c0.value as THREE.Color).setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
         (uniforms.u_c1.value as THREE.Color).setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
@@ -654,6 +675,30 @@ export default function ThreeBackground() {
           const cb = lerpRGB(palA.bottom, palB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
           uniforms.u_bottomWhiteStart.value = lerp(palA.bwStart, palB.bwStart, tSeg);
           uniforms.u_bottomWhiteEnd.value = lerp(palA.bwEnd, palB.bwEnd, tSeg);
+        }
+      } else if (stage1HoldActive && selectedSnapshot && !paletteLocked) {
+        // Stage1 (base palette) entry: keep selected colors until any movement
+        const deltaProgress = Math.abs(scrollDisplayed - stage1HoldProgressStart);
+        const deltaPhase = Math.abs(phaseAccum - stage1HoldPhaseStart);
+        const moved = (deltaProgress + deltaPhase) > 0.002;
+        if (!moved) {
+          (uniforms.u_c0.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
+          (uniforms.u_c1.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
+          (uniforms.u_c2.value as THREE.Color).setRGB(selectedSnapshot.c2[0], selectedSnapshot.c2[1], selectedSnapshot.c2[2]);
+          (uniforms.u_c3.value as THREE.Color).setRGB(selectedSnapshot.c3[0], selectedSnapshot.c3[1], selectedSnapshot.c3[2]);
+          (uniforms.u_c4.value as THREE.Color).setRGB(selectedSnapshot.c4[0], selectedSnapshot.c4[1], selectedSnapshot.c4[2]);
+          (uniforms.u_c5.value as THREE.Color).setRGB(selectedSnapshot.c5[0], selectedSnapshot.c5[1], selectedSnapshot.c5[2]);
+          (uniforms.u_c0b.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
+          (uniforms.u_c1b.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
+          (uniforms.u_c2b.value as THREE.Color).setRGB(selectedSnapshot.c2[0], selectedSnapshot.c2[1], selectedSnapshot.c2[2]);
+          (uniforms.u_c3b.value as THREE.Color).setRGB(selectedSnapshot.c3[0], selectedSnapshot.c3[1], selectedSnapshot.c3[2]);
+          (uniforms.u_c4b.value as THREE.Color).setRGB(selectedSnapshot.c4[0], selectedSnapshot.c4[1], selectedSnapshot.c4[2]);
+          (uniforms.u_c5b.value as THREE.Color).setRGB(selectedSnapshot.c5[0], selectedSnapshot.c5[1], selectedSnapshot.c5[2]);
+          (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(selectedSnapshot.bottom[0], selectedSnapshot.bottom[1], selectedSnapshot.bottom[2]);
+          uniforms.u_bottomWhiteStart.value = selectedSnapshot.bwStart;
+          uniforms.u_bottomWhiteEnd.value = selectedSnapshot.bwEnd;
+        } else {
+          stage1HoldActive = false;
         }
       } else if (stage3 && selectedSnapshot && !paletteLocked) {
         // Stage3: keep the selected colors until any movement is detected.
@@ -775,6 +820,7 @@ export default function ThreeBackground() {
       window.removeEventListener("bg-gradient:select", onSelect as EventListener);
       window.removeEventListener("bg-gradient:phase", onPhase as EventListener);
       window.removeEventListener("bg-gradient:stage2", onStage2 as EventListener);
+      window.removeEventListener("bg-gradient:stage1", onStage1 as EventListener);
       window.removeEventListener("bg-gradient:stage3", onStage3 as EventListener);
       window.removeEventListener("bg-gradient:final", onFinal as EventListener);
       window.removeEventListener("resize", resize);
