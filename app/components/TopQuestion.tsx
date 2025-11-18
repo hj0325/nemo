@@ -17,6 +17,9 @@ export default function TopQuestion() {
       setTimeout(() => {
         setText("창밖에 어떤 빛이 보였으면 좋겠나요?");
         setShow(true);
+        window.dispatchEvent(new CustomEvent("bg-gradient:stage2"));
+        // ensure scroll interaction is enabled again for stage 2
+        window.dispatchEvent(new CustomEvent("bg-gradient:enable-scroll"));
       }, 1100);
     }
     window.addEventListener("bg-gradient:progress", onProgress as EventListener);

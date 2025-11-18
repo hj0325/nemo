@@ -39,6 +39,10 @@ export default function ThreeBackground() {
       return frac(Math.sin(seed * 127.1 + 311.7) * 43758.5453123);
     }
     function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+    function smoothstep(edge0: number, edge1: number, x: number) {
+      const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
     type RGB = [number, number, number];
     function lerpRGB(a: RGB, b: RGB, t: number): RGB {
       return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
@@ -72,6 +76,49 @@ export default function ThreeBackground() {
       const bottom: RGB = hslToRgb01(hBase, lerp(0.35, 0.70, s1), lerp(0.82, 0.96, s0));
 
       // Band geometry per segment
+      const bwStart = lerp(0.05, 0.16, s2);
+      const bwEnd = Math.min(0.98, bwStart + lerp(0.45, 0.75, s3));
+      return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
+    }
+    function segPaletteStage2(segIndex: number) {
+      const idx = ((segIndex % 9) + 9) % 9;
+      // sequence: white > yellow > pink > blue > green > orange > red > navy > white
+      const hues = [0, 58, 330, 210, 130, 30, 0, 230, 0]; // hue for stages (white handled specially)
+      const isWhite = (i: number) => i === 0 || i === 8;
+      const hBase = hues[idx];
+      const s0 = rand(segIndex * 1.71 + 0.21);
+      const s1 = rand(segIndex * 2.37 + 0.49);
+      const s2 = rand(segIndex * 3.91 + 0.73);
+      const s3 = rand(segIndex * 5.07 + 0.17);
+
+      const whiteLight: RGB = [1.0, 1.0, 1.0];
+      const whitePale: RGB = [0.97, 0.97, 0.97];
+      const darkTintH = 210;
+
+      const c0: RGB = isWhite(idx)
+        ? hslToRgb01(darkTintH, 0.06, 0.03)
+        : hslToRgb01(hBase, lerp(0.06, 0.18, s3), lerp(0.02, 0.06, s0));
+      const c1: RGB = isWhite(idx)
+        ? hslToRgb01(darkTintH, 0.10, 0.06)
+        : hslToRgb01(hBase, lerp(0.10, 0.24, s0), lerp(0.05, 0.09, s1));
+      const c2: RGB = isWhite(idx)
+        ? hslToRgb01(darkTintH, 0.14, 0.10)
+        : hslToRgb01(hBase, lerp(0.14, 0.30, s1), lerp(0.08, 0.13, s2));
+      const c3: RGB = isWhite(idx)
+        ? hslToRgb01(darkTintH, 0.18, 0.14)
+        : hslToRgb01(hBase, lerp(0.18, 0.36, s2), lerp(0.12, 0.18, s3));
+
+      const c4: RGB = isWhite(idx)
+        ? whiteLight
+        : hslToRgb01(hBase, lerp(0.50, 0.85, s1), lerp(0.55, 0.75, s2));
+      const c5: RGB = isWhite(idx)
+        ? whitePale
+        : hslToRgb01(hBase, lerp(0.30, 0.55, s0), lerp(0.80, 0.94, s3));
+
+      const bottom: RGB = isWhite(idx)
+        ? whitePale
+        : hslToRgb01(hBase, lerp(0.35, 0.70, s1), lerp(0.82, 0.96, s0));
+
       const bwStart = lerp(0.05, 0.16, s2);
       const bwEnd = Math.min(0.98, bwStart + lerp(0.45, 0.75, s3));
       return { c0, c1, c2, c3, c4, c5, bottom, bwStart, bwEnd };
@@ -147,6 +194,11 @@ export default function ThreeBackground() {
       bwStart: uniforms.u_bottomWhiteStart.value as number,
       bwEnd: uniforms.u_bottomWhiteEnd.value as number,
     };
+    // Snapshot captured when user clicks "select" (used for stage2 pre-white transition)
+    let selectedSnapshot: {
+      c0: RGB; c1: RGB; c2: RGB; c3: RGB; c4: RGB; c5: RGB;
+      bottom: RGB; bwStart: number; bwEnd: number;
+    } | null = null;
 
     const material = new THREE.ShaderMaterial({
       transparent: false,
@@ -395,6 +447,8 @@ export default function ThreeBackground() {
     let fromStart = 0, fromEnd = 0, toStart = 0, toEnd = 0;
     let paletteLocked = false;
     let phaseAccum = 0; // allows infinite cycling across the 0..1 progress range
+    let stage2 = false; // after question changes to '창밖에...'
+    let stage2ProgressStart = 0; // progress at the moment stage2 begins
     function captureFrom() {
       function read(u: any): RGB { const c = u.value as THREE.Color; return [c.r, c.g, c.b]; }
       fromCols.u_c0 = read(uniforms.u_c0);
@@ -439,6 +493,18 @@ export default function ThreeBackground() {
       // lock the current palette and stop further dynamic updates
       paletteLocked = true;
       tweenActive = false;
+      // capture selected colors
+      selectedSnapshot = {
+        c0: readRGB(uniforms.u_c0),
+        c1: readRGB(uniforms.u_c1),
+        c2: readRGB(uniforms.u_c2),
+        c3: readRGB(uniforms.u_c3),
+        c4: readRGB(uniforms.u_c4),
+        c5: readRGB(uniforms.u_c5),
+        bottom: readRGB(uniforms.u_bottomWhiteColor),
+        bwStart: uniforms.u_bottomWhiteStart.value as number,
+        bwEnd: uniforms.u_bottomWhiteEnd.value as number,
+      };
       // emit flash color (use the current warm top color c4)
       const cc = (uniforms.u_c4.value as THREE.Color);
       window.dispatchEvent(
@@ -456,17 +522,24 @@ export default function ThreeBackground() {
       }
     }
     window.addEventListener("bg-gradient:phase", onPhase as EventListener);
+    function onStage2() {
+      stage2 = true;
+      paletteLocked = false; // allow interaction again for stage 2
+      phaseAccum = 0;        // start new cycle from beginning (white)
+      stage2ProgressStart = scrollDisplayed; // remember current progress to compute delta
+    }
+    window.addEventListener("bg-gradient:stage2", onStage2 as EventListener);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
       // smooth approach to target progress for natural transition (single lerp in Three)
       scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.08;
       uniforms.u_scroll.value = scrollDisplayed;
       // Random-like palette driven by scroll progress (segment blend)
-      const segments = 8.0;
+      const segments = stage2 ? 9.0 : 8.0;
       const sVal = (scrollDisplayed + phaseAccum) * segments;
       const segA = Math.floor(sVal);
       const tSeg = sVal - segA;
-      if (scrollDisplayed <= 0.001) {
+      if (scrollDisplayed <= 0.001 && !stage2) {
         // Keep original initial screen colors when no scroll has happened
         (uniforms.u_c0.value as THREE.Color).setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
         (uniforms.u_c1.value as THREE.Color).setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
@@ -477,9 +550,38 @@ export default function ThreeBackground() {
         (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(initSnapshot.bottom[0], initSnapshot.bottom[1], initSnapshot.bottom[2]);
         uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
         uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
+      } else if (stage2 && selectedSnapshot && !paletteLocked) {
+        // Stage2: hold the previously selected color until the user actually scrolls,
+        // then immediately enter the stage2 color routine (starting at white stage).
+        const delta = scrollDisplayed - stage2ProgressStart;
+        if (delta <= 0.0) {
+          // hold selected colors
+          (uniforms.u_c0.value as THREE.Color).setRGB(selectedSnapshot.c0[0], selectedSnapshot.c0[1], selectedSnapshot.c0[2]);
+          (uniforms.u_c1.value as THREE.Color).setRGB(selectedSnapshot.c1[0], selectedSnapshot.c1[1], selectedSnapshot.c1[2]);
+          (uniforms.u_c2.value as THREE.Color).setRGB(selectedSnapshot.c2[0], selectedSnapshot.c2[1], selectedSnapshot.c2[2]);
+          (uniforms.u_c3.value as THREE.Color).setRGB(selectedSnapshot.c3[0], selectedSnapshot.c3[1], selectedSnapshot.c3[2]);
+          (uniforms.u_c4.value as THREE.Color).setRGB(selectedSnapshot.c4[0], selectedSnapshot.c4[1], selectedSnapshot.c4[2]);
+          (uniforms.u_c5.value as THREE.Color).setRGB(selectedSnapshot.c5[0], selectedSnapshot.c5[1], selectedSnapshot.c5[2]);
+          (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(selectedSnapshot.bottom[0], selectedSnapshot.bottom[1], selectedSnapshot.bottom[2]);
+          uniforms.u_bottomWhiteStart.value = selectedSnapshot.bwStart;
+          uniforms.u_bottomWhiteEnd.value = selectedSnapshot.bwEnd;
+        } else {
+          // proceed with stage2 cycling (first segment = white)
+          const palA = segPaletteStage2(segA);
+          const palB = segPaletteStage2(segA + 1);
+          const c0 = lerpRGB(palA.c0, palB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(c0[0], c0[1], c0[2]);
+          const c1 = lerpRGB(palA.c1, palB.c1, tSeg); (uniforms.u_c1.value as THREE.Color).setRGB(c1[0], c1[1], c1[2]);
+          const c2 = lerpRGB(palA.c2, palB.c2, tSeg); (uniforms.u_c2.value as THREE.Color).setRGB(c2[0], c2[1], c2[2]);
+          const c3 = lerpRGB(palA.c3, palB.c3, tSeg); (uniforms.u_c3.value as THREE.Color).setRGB(c3[0], c3[1], c3[2]);
+          const c4 = lerpRGB(palA.c4, palB.c4, tSeg); (uniforms.u_c4.value as THREE.Color).setRGB(c4[0], c4[1], c4[2]);
+          const c5 = lerpRGB(palA.c5, palB.c5, tSeg); (uniforms.u_c5.value as THREE.Color).setRGB(c5[0], c5[1], c5[2]);
+          const cb = lerpRGB(palA.bottom, palB.bottom, tSeg); (uniforms.u_bottomWhiteColor.value as THREE.Color).setRGB(cb[0], cb[1], cb[2]);
+          uniforms.u_bottomWhiteStart.value = lerp(palA.bwStart, palB.bwStart, tSeg);
+          uniforms.u_bottomWhiteEnd.value = lerp(palA.bwEnd, palB.bwEnd, tSeg);
+        }
       } else if (!paletteLocked) {
-        const palA = segPalette(segA);
-        const palB = segPalette(segA + 1);
+        const palA = stage2 ? segPaletteStage2(segA) : segPalette(segA);
+        const palB = stage2 ? segPaletteStage2(segA + 1) : segPalette(segA + 1);
         const c0 = lerpRGB(palA.c0, palB.c0, tSeg); (uniforms.u_c0.value as THREE.Color).setRGB(c0[0], c0[1], c0[2]);
         const c1 = lerpRGB(palA.c1, palB.c1, tSeg); (uniforms.u_c1.value as THREE.Color).setRGB(c1[0], c1[1], c1[2]);
         const c2 = lerpRGB(palA.c2, palB.c2, tSeg); (uniforms.u_c2.value as THREE.Color).setRGB(c2[0], c2[1], c2[2]);
@@ -515,6 +617,7 @@ export default function ThreeBackground() {
       window.removeEventListener("bg-gradient:randomize", onRandomize as EventListener);
       window.removeEventListener("bg-gradient:select", onSelect as EventListener);
       window.removeEventListener("bg-gradient:phase", onPhase as EventListener);
+      window.removeEventListener("bg-gradient:stage2", onStage2 as EventListener);
       window.removeEventListener("resize", resize);
       window.removeEventListener("bg-gradient:update", onUpdate as EventListener);
       window.removeEventListener("bg-gradient:progress", onProgress as EventListener);

@@ -1,6 +1,28 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export default function SelectButton() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    function onProgress(e: Event) {
+      const v = (e as CustomEvent).detail as number;
+      if (typeof v === "number" && v > 0.001) setShow(true);
+    }
+    function onSelect() {
+      // keep visible after selection as well (no change)
+      setShow(true);
+    }
+    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
+    window.addEventListener("bg-gradient:select", onSelect as EventListener);
+    return () => {
+      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
+      window.removeEventListener("bg-gradient:select", onSelect as EventListener);
+    };
+  }, []);
+
+  if (!show) return null;
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
       <button
