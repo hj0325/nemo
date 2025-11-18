@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
+import { io } from "socket.io-client";
 import QRCode from "qrcode";
 
 export default function Index() {
   const videoRef = useRef(null);
+  const router = useRouter();
   const [srcIdx, setSrcIdx] = useState(0);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [fading, setFading] = useState(false);
   const sources = useMemo(() => {
     // Expect /public/vid/v1.mp4, /public/vid/v2.mp4. Fallbacks will be handled onerror.
     return ["/vid/v1.mp4", "/vid/v2.mp4"];
@@ -39,6 +43,29 @@ export default function Index() {
   useEffect(() => {
     playCurrent();
   }, [playCurrent]);
+
+  useEffect(() => {
+    // Listen for mobile connection to auto proceed
+    const socket = io({ path: "/api/socketio" });
+    const onProceed = () => {
+      handleStart();
+    };
+    socket.on("landingProceed", onProceed);
+    return () => {
+      socket.off("landingProceed", onProceed);
+      socket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleStart = useCallback(() => {
+    if (fading) return;
+    setFading(true);
+    // small delay for fade-out, then navigate
+    setTimeout(() => {
+      router.push("/page2");
+    }, 600);
+  }, [fading, router]);
 
   return (
     <div
@@ -109,7 +136,34 @@ export default function Index() {
         <div style={{ color: "#bfc3ca", fontSize: 12, maxWidth: 260, lineHeight: 1.5 }}>
           모바일 카메라로 QR을 스캔하면 컨트롤 페이지(/mobile)로 연결됩니다.
         </div>
+        <button
+          onClick={handleStart}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #2a2f3a",
+            background: "#111318",
+            color: "#e5e7eb",
+            fontWeight: 600,
+            letterSpacing: 0.2,
+            cursor: "pointer",
+          }}
+        >
+          시작
+        </button>
       </div>
+
+      {/* Fade-to-black overlay */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#000",
+          pointerEvents: "none",
+          opacity: fading ? 1 : 0,
+          transition: "opacity 600ms ease",
+        }}
+      />
     </div>
   );
 }

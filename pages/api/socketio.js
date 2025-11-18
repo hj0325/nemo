@@ -11,6 +11,10 @@ export default function handler(req, res) {
     res.socket.server.io = io;
 
     io.on("connection", (socket) => {
+      // Landing proceed trigger (e.g., mobile connected/scanned)
+      socket.on("landingProceed", (payload) => {
+        io.emit("landingProceed", { ts: Date.now(), ...(payload || {}) });
+      });
       socket.on("next", () => {
         io.emit("next");
       });

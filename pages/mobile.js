@@ -76,7 +76,11 @@ export default function MobileController() {
   useEffect(() => {
     const socket = io({ path: "/api/socketio" });
     socketRef.current = socket;
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      // Notify landing page to proceed when mobile connects via QR
+      try { socket.emit("landingProceed", { source: "mobile" }); } catch {}
+    };
     const onDisconnect = () => setConnected(false);
     const onNext = () => setStep((s) => Math.min(3, s + 1));
     const onPrev = () => setStep((s) => Math.max(0, s - 1));
