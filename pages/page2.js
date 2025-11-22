@@ -6,7 +6,6 @@ import LandingVideoCRT from "@/components/desktop/page2/LandingVideoCRT";
 import WindowsScatter from "@/components/desktop/page2/WindowsScatter";
 import WindowsArrangeTransition from "@/components/desktop/page2/WindowsArrangeTransition";
 import WindowsArrangeGrid from "@/components/desktop/page2/WindowsArrangeGrid";
-import WindowsMosaicTransition from "@/components/desktop/page2/WindowsMosaicTransition";
 import CenterPrompt from "@/components/desktop/page2/CenterPrompt";
 import FadeOverlay from "@/components/desktop/page2/FadeOverlay";
 import EdgeNav from "@/components/desktop/page2/EdgeNav";
@@ -36,11 +35,7 @@ export default function Page2() {
   const [arranged, setArranged] = useState(false);
   const [arranging, setArranging] = useState(false);
   const [transitionStart, setTransitionStart] = useState(false);
-  const [mosaic, setMosaic] = useState(false);
-  const [mosaicStart, setMosaicStart] = useState(false);
-  const [mosaicTargets, setMosaicTargets] = useState([]);
-  const [zoomOut, setZoomOut] = useState(false);
-  const [zoomOutStart, setZoomOutStart] = useState(false);
+  // Removed mosaic/zoomOut sequence — keep scatter simple
   const [survivors, setSurvivors] = useState([]); // indices to keep (9)
   const [targets, setTargets] = useState([]); // target rects for survivors
   // Color mood set (applied as overlay/filter to unify tone)
@@ -205,7 +200,7 @@ export default function Page2() {
     const phi = 1.61803398875;
     const ratioPalette = [1, 4/3, 3/4, 16/9, 9/16, phi, 1/phi];
     const arr = [];
-    const count = 48; // render many OS windows for zoom-out scene
+    const count = 24; // reduced number of OS windows
     // grid buckets to avoid clustering and to fill top-left as well
     const cols = 5, rows = 4;
     const cells = [];
@@ -353,24 +348,32 @@ export default function Page2() {
     }
     return arr;
   }, []);
+  const [tileSources, setTileSources] = useState([]);
+  const [folderIndex, setFolderIndex] = useState(1); // 1..9 for /2d/{n}
+  const [prevTileSources, setPrevTileSources] = useState([]);
   const triggerArrange = useCallback(() => {
-    // Begin smooth transition into a 3x3 grid of 9 survivors
+    // Begin smooth transition into a 2x2 grid of 4 survivors
     setArranging(true);
     setTransitionStart(false);
-    // pick top-9 by area
+    // pick top-4 by area
     const withArea = windows.map((w, idx) => ({
       idx,
       area: parseFloat(w.width) * parseFloat(w.height),
     }));
     withArea.sort((a, b) => b.area - a.area);
-    const surv = withArea.slice(0, 9).map((e) => e.idx);
+    const surv = withArea.slice(0, 4).map((e) => e.idx);
     setSurvivors(surv);
-    // build 3x3 targets to fill viewport exactly (no outer padding/gaps)
+    // compute folder-based 4 tile sources from /2d/{1..9}/{n}-{1..4}.png
+    const n0 = ((folderIndex % 9) + 9) % 9 || 9;
+    const tiles0 = [1, 2, 3, 4].map((k) => `/2d/${n0}/${n0}-${k}.png`);
+    setPrevTileSources(tiles0);
+    setTileSources(tiles0);
+    // build 2x2 targets to fill viewport exactly (no outer padding/gaps)
     const padX = 0; // vw
     const padY = 0; // vh
     const gapX = 0; // vw
     const gapY = 0; // vh
-    const cols = 3, rows = 3;
+    const cols = 2, rows = 2;
     const tileW = (100 - padX * 2 - gapX * (cols - 1)) / cols;
     const tileH = (100 - padY * 2 - gapY * (rows - 1)) / rows;
     const tgs = [];
@@ -387,13 +390,22 @@ export default function Page2() {
     setTargets(tgs);
     // kick transitions on next frame
     requestAnimationFrame(() => setTransitionStart(true));
-    // finalize after animation
+    // finalize after animation to enable interactions on arranged grid
     setTimeout(() => {
       setArranged(true);
       setArranging(false);
       setTransitionStart(false);
     }, 1000);
   }, [windows]);
+
+  // update tile sources when folderIndex changes in arranged state
+  useEffect(() => {
+    if (!arranged) return;
+    const n = ((folderIndex % 9) + 9) % 9 || 9;
+    const tiles = [1, 2, 3, 4].map((k) => `/2d/${n}/${n}-${k}.png`);
+    setPrevTileSources(tileSources);
+    setTileSources(tiles);
+  }, [folderIndex, arranged]);
   useEffect(() => {
     const t = setTimeout(() => {
       setShow(true);
@@ -584,72 +596,26 @@ export default function Page2() {
       {/* Fade video to black overlay (after video ended) */}
       <FadeOverlay visible={fadeVideo} duration={600} zIndex={4} />
       {/* Removed stage-1 prompt */}
-      {/* Old modal windows montage */}
-      {showWindows && !arranged && !arranging && !mosaic && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            transformOrigin: "center",
-            animation: zoomOutStart ? `zoomOutLayer 700ms cubic-bezier(0.19,1,0.22,1) forwards` : undefined,
-            transform: zoomOut && !zoomOutStart ? "scale(0.75)" : undefined,
-          }}
-        >
-          <WindowsScatter
-            windows={windows}
-            clarity={clarity}
-            cameraTargets={camTargets}
-            cameraImages={camImages}
-            paused={zoomOut}
-          />
-        </div>
-      )}
-      {/* Mosaic zoom-in step before final 3x3 */}
-      {showWindows && !arranged && mosaic && (
-        <WindowsMosaicTransition
+      {/* Scatter montage (no mosaic step) */}
+      {showWindows && !arranged && !arranging && (
+        <WindowsScatter
           windows={windows}
-          targets4={mosaicTargets}
-          start={mosaicStart}
-          durationMs={1200}
-          initialScale={0.75}
-          finalScale={2.0}
           clarity={clarity}
           cameraTargets={camTargets}
           cameraImages={camImages}
-          onDone={() => {
-            // Pick center 2x2 from 4x4 (rows 1..2, cols 1..2)
-            const centerIdxs = [5, 6, 9, 10];
-            setSurvivors(centerIdxs);
-            setMosaic(false);
-            setMosaicStart(false);
-            setZoomOut(false);
-            setZoomOutStart(false);
-            setArranged(true);
-          }}
         />
       )}
-      {/* Transition layer: smooth arrange to 3x3 for 9 survivors */}
-      {showWindows && arranging && (
+      {/* Transition layer: 2x2 arrange (also kept for arranged state) */}
+      {showWindows && (arranging || arranged) && (
         <WindowsArrangeTransition
           windows={windows}
           survivors={survivors}
           targets={targets}
-          start={transitionStart}
-        />
-      )}
-      {/* Arranged grid view */}
-      {showWindows && arranged && (
-        <WindowsArrangeGrid
-          windows={windows}
-          survivors={survivors}
-          moods={moods}
-          moodIndex={moodIndex}
-          scrollPulseDir={scrollPulseDir}
-          scrollKey={scrollPulseKey}
-          clarity={clarity}
-          cameraTargets={camTargets}
-          cameraImages={camImages}
-          plain
+          start={arranged || transitionStart}
+          tileSources={tileSources}
+          prevTileSources={prevTileSources}
+          pulseDir={scrollPulseDir}
+          pulseKey={scrollPulseKey}
         />
       )}
       {/* Background focus overlay to make question modal stand out */}
@@ -672,7 +638,7 @@ export default function Page2() {
       {showWindows && arranged && (
         <>
           <button
-            onClick={() => { prevMood(); triggerPulse("up"); }}
+            onClick={() => { setFolderIndex((i) => (i - 2 + 9) % 9 + 1); triggerPulse("up"); }}
             style={{
               position: "absolute",
               right: 12,
@@ -691,7 +657,7 @@ export default function Page2() {
             ↑
           </button>
           <button
-            onClick={() => { nextMood(); triggerPulse("down"); }}
+            onClick={() => { setFolderIndex((i) => (i % 9) + 1); triggerPulse("down"); }}
             style={{
               position: "absolute",
               right: 12,
@@ -723,11 +689,11 @@ export default function Page2() {
               zIndex: 9,
             }}
           >
-            {`무드: ${moods[moodIndex]?.name || ""}`}
+            {`파일 폴더: ${folderIndex}`}
           </div>
         </>
       )}
-      {/* Center question box during scatter/transition */}
+      {/* Center question box during scatter */}
       <CenterPrompt
         visible={showWindows && !arranged}
         os
@@ -739,10 +705,7 @@ export default function Page2() {
           <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>모바일을 스크롤하여 찾아보세요</div>
         </div>
       </CenterPrompt>
-      {/* Scroll to arrange (desktop/mobile) */}
-      {showWindows && !arranged && !mosaic && !zoomOutStart && !zoomOut && (
-        <ScrollArrange onArrange={triggerArrange} />
-      )}
+      {/* Scroll arrange disabled (no 4-up transition) */}
       {/* Edge navigation: Prev / Next */}
       <EdgeNav
         onPrev={() => {
@@ -750,50 +713,17 @@ export default function Page2() {
           else goToStage(Math.max(0, stage - 1));
         }}
         onNext={() => {
-          if (stage === 2 && mosaic) {
-            // prevent skipping while mosaic animation is running
-            return;
-          }
-          if (stage === 2 && !arranged) {
-            // Step 1: if not zooming yet, zoom-out then freeze 1s then start mosaic
-            if (!zoomOut && !mosaic) {
-              setZoomOut(true);
-              setZoomOutStart(true);
-              setTimeout(() => {
-                setZoomOutStart(false);
-                setTimeout(() => {
-                  const cols = 4, rows = 4;
-                  const tileW = 100 / cols;
-                  const tileH = 100 / rows;
-                  const tgs = [];
-                  for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                      tgs.push({ left: c * tileW, top: r * tileH, width: tileW, height: tileH });
-                    }
-                  }
-                  setMosaicTargets(tgs);
-                  setMosaic(true);
-                  requestAnimationFrame(() => setMosaicStart(true));
-                }, 1000); // freeze
-              }, 700); // zoom-out duration
-              return;
-            }
-            // ignore extra clicks during zoom-out
-            if (zoomOut) return;
-          }
+          if (stage === 2 && !arranged) { triggerArrange(); return; }
           if (stage === 2 && arranged) {
-            // Persist the last used arranged image (tile 0) for house page
+            // Persist current 2x2 sources to be shown in room's HTML screen
             try {
-              const mood = moods[(moodIndex % moods.length + moods.length) % moods.length]?.name || "nemo";
-              const src = `https://picsum.photos/seed/${encodeURIComponent(`${mood}-0`)}/1200/800`;
-              localStorage.setItem("nemo_last_image", src);
-              // Persist full 3x3 grid sources for room HTML screen
-              const grid = Array.from({ length: 9 }).map((_, i) =>
-                `https://picsum.photos/seed/${encodeURIComponent(`${mood}-${i}`)}/1200/800`
-              );
+              const arr = Array.isArray(tileSources) && tileSources.length ? tileSources : ["/2d/nemo.png"];
+              const last = arr[0] || "/2d/nemo.png";
+              localStorage.setItem("nemo_last_image", last);
+              // Room currently renders 3x3; fill 9 slots by repeating the 4 tiles
+              const grid = Array.from({ length: 9 }).map((_, i) => arr[i % arr.length]);
               localStorage.setItem("nemo_grid_images", JSON.stringify(grid));
             } catch {}
-            // Close-out fade then navigate
             setClosing(true);
             setTimeout(() => router.push("/room"), 700);
             return;

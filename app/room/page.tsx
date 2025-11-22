@@ -37,12 +37,14 @@ export default function FixedRoomPage() {
   const camVeryCloseUp = useMemo(() => ({ x: 1.10, y: 1.00, z: 2.30 }), []);
   const camClose = useMemo(() => ({ x: 3.2, y: 2.2, z: 4.2 }), []);
   const camFar = useMemo(() => ({ x: 6.0, y: 4.0, z: 12.0 }), []);
+  // Slightly left-shifted variant of camFar for final turn
+  const camFarLeft = useMemo(() => ({ x: 4.0, y: 4.0, z: 12.0 }), []);
   // 이미지 각도에 더 근접하도록 오른쪽/뒤/약간 위로
   const camAngle = useMemo(() => ({ x: -3.9, y: -2, z: 6.8 }), []);
   // 정면 보기 타겟 (창문 방향을 정면으로 바라보는 느낌)
   const lookWindow = useMemo(() => ({ x: -3.9, y: -1.6, z: -4.8 }), []);
-  // Step 0 -> camClose, Step 1 -> camFar, Step 2 -> camAngle, Step 3 -> same as camAngle (fade stage)
-  const steps = [camClose, camFar, camAngle, camAngle] as { x: number; y: number; z: number }[];
+  // Step 0 -> camClose, Step 1 -> camFar (zoom-out), Step 2 -> camFarLeft + yaw
+  const steps = [camClose, camFar, camFarLeft] as { x: number; y: number; z: number }[];
   const [step, setStep] = useState(0);
   const socketRef = useRef<any>(null);
   const [remoteProgress, setRemoteProgress] = useState<number | null>(null);
@@ -131,13 +133,18 @@ export default function FixedRoomPage() {
         lightLerp={1200}
         pinIntensityTarget={step === 2 ? 6 : 20}
         pinIntensityLerp={900}
+        // After two Next presses (step === 2), apply a stronger yaw around Y (reverse direction)
+        yawDegTarget={step >= 2 ? -48 : 0}
+        yawLerp={1200}
+        yawDelayMs={300}
+        yawTrigger={step}
         initialHtmlDist={pHtmlDist}
         initialHtmlOffX={pHtmlOffX}
         initialHtmlOffY={pHtmlOffY}
         initialHtmlOffZ={pHtmlOffZ}
         initialHtmlScaleMul={pHtmlScale}
         htmlVisible={step < 2}
-        overlayVisible={step >= 2}
+        overlayVisible={false}
         overlayPos={{ x: -3.9, y: -4.4, z: -18.6 }}
         overlayScale={5.0}
         overlayOpacityTarget={overlayTarget}

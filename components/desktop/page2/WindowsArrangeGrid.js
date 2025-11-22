@@ -11,6 +11,7 @@ export default function WindowsArrangeGrid({
   cameraTargets = [],
   cameraImages = [],
   plain = false,
+  tileSources = [],
 }) {
   const chooseMesySrc = (w, i) => {
     const ww = parseFloat(w.widthVw ?? parseFloat(w.width || "0"));
@@ -106,7 +107,7 @@ export default function WindowsArrangeGrid({
       {renderList.map((w, i) => {
         const picsum = choosePicsumSrc(i);
         const camIdx = cameraTargets.includes(i) ? (i % Math.max(1, cameraImages.length)) : -1;
-        const baseSrc = picsum || chooseMesySrc(w, i);
+        const baseSrc = tileSources[i] || picsum || chooseMesySrc(w, i);
         const src = camIdx >= 0 && cameraImages[camIdx] ? cameraImages[camIdx] : baseSrc;
         const withScroll = i % 4 === 0; // 일부만 스크롤 효과
         const dur = 7 + (i % 4) * 1.4;

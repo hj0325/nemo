@@ -8,13 +8,53 @@ import { createAtmosphere } from "./effects";
 import { loadModelAndLights } from "./loader";
 import { CSS3DRenderer, CSS3DObject } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
+// Make all 3D meshes monochrome (neutral albedo) but still lit with colored lights
+const MONOCHROME_LIT = true;
+function forceAllMeshesToMonochromeLit(root) {
+  if (!root || !root.traverse) return;
+  root.traverse((obj) => {
+    if (obj && obj.isMesh) {
+      const toMonochromeStandard = (mat) => {
+        const std = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        // Preserve useful physical params if present
+        if (mat && typeof mat.roughness === "number") std.roughness = mat.roughness;
+        if (mat && typeof mat.metalness === "number") std.metalness = mat.metalness;
+        if (mat && typeof mat.side !== "undefined") std.side = mat.side;
+        if (mat && mat.transparent === true) {
+          std.transparent = true;
+          std.opacity = typeof mat.opacity === "number" ? mat.opacity : 1.0;
+        }
+        // Drop base/baseColor maps to ensure neutral albedo; keep normals if available
+        if (mat && mat.normalMap) std.normalMap = mat.normalMap, std.normalScale = mat.normalScale?.clone?.() || new THREE.Vector2(1, 1);
+        return std;
+      };
+      if (Array.isArray(obj.material)) {
+        obj.material = obj.material.map((m) => toMonochromeStandard(m));
+        obj.material.forEach((m) => (m.needsUpdate = true));
+      } else {
+        obj.material = toMonochromeStandard(obj.material);
+        if (obj.material) obj.material.needsUpdate = true;
+      }
+      // keep original shadow settings (do not disable)
+    }
+  });
+}
+
+// Auto-adjust camera after user zooms out (increase distance)
+const AUTO_LOWER_ON_ZOOM_OUT = true;
+const ZOOM_OUT_THRESHOLD = 0.6; // distance delta to treat as "zoomed out"
+const LOWER_Y_OFFSET = 0.35;    // how much to lower camera/target (world units)
+const LOWER_Y_LERP_MS = 700;    // animation duration
+// Cap how far user can zoom out relative to initial distance (keep strong, but slightly less)
+const MAX_ZOOM_OUT_FACTOR = 3.5;
+
 // Manual tuning values for the HTML screen attachment
 // Adjust these numbers to fine-tune position/size/rotation on the monitor
 const HTML_TUNE = {
-  offsetX: 0.0,     // base local offsets kept small so sliders have visible effect
-  offsetY: 0.0,
+  offsetX: -0.12,   // strong left shift
+  offsetY: 0.09,    // stronger upward shift
   offsetZ: 0.002,   // slight forward to avoid z-fighting
-  scaleMul: 1.0,
+  scaleMul: 1.08,
   rotYDeg: 0,
   // Arrow-like local axis (can be tuned), distance controlled by slider htmlDist
   axisX: 1.0,
@@ -96,6 +136,11 @@ export default function Room(props) {
   const overlaySlideRafRef = useRef(null);
   const overlayTexCacheRef = useRef(new Map());
   const [overlayIndex, setOverlayIndex] = useState(0);
+  // Track zoom distance and manage post-zoom lowering animation
+  const lastZoomDistRef = useRef(null);
+  const lowerAnimRafRef = useRef(null);
+  const lowerInProgressRef = useRef(false);
+  const baseZoomDistRef = useRef(null);
   const overlayBaseSizeRef = useRef({ w: 1.6, h: 0.9 });
   // Overlay local offsets the user can tune in runtime
   const [overlayOffX, setOverlayOffX] = useState(0);
@@ -158,7 +203,7 @@ export default function Room(props) {
     renderer.setSize(container.clientWidth, container.clientHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
+    renderer.toneMappingExposure = 1.28;
     renderer.physicallyCorrectLights = true;
     renderer.useLegacyLights = false;
     renderer.shadowMap.enabled = true;
@@ -180,12 +225,60 @@ export default function Room(props) {
     }
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
+    // Record initial camera-target distance to cap max zoom-out
+    try {
+      baseZoomDistRef.current = camera.position.distanceTo(controls.target);
+    } catch {}
+    // Detect zoom-out and gently lower camera and target
+    const scheduleLowerCamera = () => {
+      if (!AUTO_LOWER_ON_ZOOM_OUT) return;
+      if (lowerInProgressRef.current) return;
+      const cam = cameraRef.current;
+      const ctr = controlsRef.current;
+      if (!cam || !ctr) return;
+      lowerInProgressRef.current = true;
+      const y0Cam = cam.position.y;
+      const y1Cam = y0Cam - LOWER_Y_OFFSET;
+      const t0 = performance.now();
+      const dur = Math.max(120, LOWER_Y_LERP_MS);
+      const step = (now) => {
+        const u = Math.min(1, (now - t0) / dur);
+        const s = u * u * (3 - 2 * u);
+        cam.position.y = y0Cam + (y1Cam - y0Cam) * s;
+        cam.updateProjectionMatrix();
+        ctr.update();
+        setCamY(cam.position.y);
+        if (u < 1) {
+          lowerAnimRafRef.current = requestAnimationFrame(step);
+        } else {
+          lowerInProgressRef.current = false;
+          lowerAnimRafRef.current = null;
+        }
+      };
+      lowerAnimRafRef.current = requestAnimationFrame(step);
+    };
+    const handleControlsChange = () => {
+      const cam = cameraRef.current;
+      const ctr = controlsRef.current;
+      if (!cam || !ctr) return;
+      const dist = cam.position.distanceTo(ctr.target);
+      const prev = lastZoomDistRef.current;
+      if (prev == null) {
+        lastZoomDistRef.current = dist;
+        return;
+      }
+      if (dist - prev > ZOOM_OUT_THRESHOLD) {
+        scheduleLowerCamera();
+      }
+      lastZoomDistRef.current = dist;
+    };
+    controls.addEventListener("change", handleControlsChange);
 
     // EXR env
     const disposeEnv = setupEXREnvironment(renderer, scene, "/exr/mea.exr");
 
     // Add a faint cool ambient to neutralize yellow cast (no heavy filters)
-    const ambient = new THREE.AmbientLight(0xdfeaff, 0.08);
+    const ambient = new THREE.AmbientLight(0xdfeaff, 0.045);
     scene.add(ambient);
     const ambientRef = { current: ambient };
 
@@ -357,6 +450,14 @@ export default function Room(props) {
     applyGrain();
     container.appendChild(grain);
     const grainTimer = null; // keep static grain for performance
+    // Subtle vignette to increase perceived contrast at edges
+    const vignette = document.createElement("div");
+    vignette.style.position = "absolute";
+    vignette.style.inset = "0";
+    vignette.style.pointerEvents = "none";
+    vignette.style.zIndex = "3";
+    vignette.style.background = "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.28) 100%)";
+    container.appendChild(vignette);
 
     // Model + lights
     loadModelAndLights(
@@ -381,20 +482,20 @@ export default function Room(props) {
             scene.add(virtual);
             anchor = virtual;
           }
-          // Prepare grid images from localStorage to show user's last selection
+          // Prepare grid images from localStorage to show user's last 4 (2x2) selection
           let gridImgs = [];
           try {
             const raw = localStorage.getItem("nemo_grid_images");
             const arr = raw ? JSON.parse(raw) : null;
-            if (Array.isArray(arr) && arr.length >= 9) {
-              gridImgs = arr.slice(0, 9);
+            if (Array.isArray(arr) && arr.length >= 4) {
+              gridImgs = arr.slice(0, 4);
             } else {
               const last = localStorage.getItem("nemo_last_image");
-              if (last) gridImgs = Array.from({ length: 9 }).map(() => last);
+              if (last) gridImgs = Array.from({ length: 4 }).map(() => last);
             }
           } catch {}
           if (gridImgs.length === 0) {
-            gridImgs = Array.from({ length: 9 }).map(() => "/2d/nemo.png");
+            gridImgs = Array.from({ length: 4 }).map(() => "/2d/nemo.png");
           }
           const iframe = document.createElement("iframe");
           iframe.setAttribute("title", "screen");
@@ -424,7 +525,7 @@ export default function Room(props) {
         overflow:hidden;
       }
       .wrap { position:relative; width:100%; height:100%; display:grid;
-        grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px; }
+        grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2px; }
       .cell { position:relative; width:100%; height:100%; overflow:hidden; }
       .cell img { width:100%; height:100%; object-fit:cover; display:block; filter: brightness(1.02); }
       /* subtle vertical scanlines */
@@ -502,6 +603,11 @@ export default function Room(props) {
       }
     );
 
+    // If requested, override all mesh materials to monochrome (still lit) after setup
+    if (MONOCHROME_LIT) {
+      forceAllMeshesToMonochromeLit(scene);
+    }
+
     let raf = null;
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -540,6 +646,11 @@ export default function Room(props) {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       disposeEnv();
+      if (controlsRef.current) {
+        try {
+          controlsRef.current.removeEventListener("change", handleControlsChange);
+        } catch {}
+      }
       // Cleanup overlay plane
       if (overlayPlaneRef.current) {
         if (overlayPlaneRef.current.parent) overlayPlaneRef.current.parent.remove(overlayPlaneRef.current);
@@ -558,6 +669,7 @@ export default function Room(props) {
       }
       if (grainTimer) clearInterval(grainTimer);
       if (grain && grain.parentNode) grain.parentNode.removeChild(grain);
+      if (vignette && vignette.parentNode) vignette.parentNode.removeChild(vignette);
       if (rendererRef.current) {
         rendererRef.current.dispose();
         const el = rendererRef.current.domElement;
@@ -855,7 +967,9 @@ export default function Room(props) {
       controls.maxDistance = distance;
     } else {
       controls.minDistance = 0.1;
-      controls.maxDistance = Infinity;
+      const baseD = baseZoomDistRef.current ?? camera.position.distanceTo(controls.target);
+      const cap = (typeof baseD === "number" && isFinite(baseD)) ? baseD * MAX_ZOOM_OUT_FACTOR : Infinity;
+      controls.maxDistance = cap;
     }
     if (lockTilt) {
       controls.minPolarAngle = spherical.phi;
@@ -907,6 +1021,51 @@ export default function Room(props) {
     raf = requestAnimationFrame(step);
     return () => raf && cancelAnimationFrame(raf);
   }, [props && props.cameraTarget, props && props.cameraLerp]);
+
+  // Slight yaw around Y-axis (rotate camera around current controls.target)
+  useEffect(() => {
+    const yawDeg = (props && props.yawDegTarget) || 0;
+    const trigger = props && props.yawTrigger;
+    const lerpMs = Math.max(120, (props && props.yawLerp) || 700);
+    const delayMs = Math.max(0, (props && props.yawDelayMs) || 0);
+    if (!cameraRef.current || !controlsRef.current) return;
+    if (!Number.isFinite(yawDeg) || Math.abs(yawDeg) < 1e-3) return;
+    const cam = cameraRef.current;
+    const ctr = controlsRef.current;
+    const target = ctr.target.clone();
+    const startRel = cam.position.clone().sub(target);
+    const sph = new THREE.Spherical().setFromVector3(startRel);
+    const startTheta = sph.theta;
+    const endTheta = startTheta + THREE.MathUtils.degToRad(yawDeg);
+    let raf = null;
+    let timer = null;
+    const startAnim = () => {
+      const t0 = performance.now();
+      const step = (now) => {
+        const u = Math.min(1, (now - t0) / lerpMs);
+        const s = u * u * (3 - 2 * u);
+        const curTheta = startTheta + (endTheta - startTheta) * s;
+        const curSph = new THREE.Spherical(sph.radius, sph.phi, curTheta);
+        const curRel = new THREE.Vector3().setFromSpherical(curSph);
+        const curPos = target.clone().add(curRel);
+        cam.position.copy(curPos);
+        cam.updateProjectionMatrix();
+        ctr.update();
+        if (u < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+    if (delayMs > 0) {
+      timer = setTimeout(startAnim, delayMs);
+    } else {
+      startAnim();
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props && props.yawDegTarget, props && props.yawLerp, props && props.yawTrigger]);
 
   // Smoothly move OrbitControls target if provided
   useEffect(() => {
