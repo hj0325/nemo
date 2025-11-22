@@ -10,6 +10,7 @@ export default function WindowsArrangeGrid({
   clarity = 0,
   cameraTargets = [],
   cameraImages = [],
+  plain = false,
 }) {
   const chooseMesySrc = (w, i) => {
     const ww = parseFloat(w.widthVw ?? parseFloat(w.width || "0"));
@@ -61,22 +62,10 @@ export default function WindowsArrangeGrid({
       : "none";
   // Only render survivor windows (9개). If survivors 미지정, 첫 9개 사용
   const renderList = Array.isArray(survivors) && survivors.length
-    ? survivors.map((idx) => windows[idx]).filter(Boolean).slice(0, 9)
-    : windows.slice(0, 9);
+    ? survivors.map((idx) => windows[idx]).filter(Boolean).slice(0, 4)
+    : windows.slice(0, 4);
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gridTemplateRows: "repeat(3, 1fr)",
-        columnGap: 0,
-        rowGap: 0,
-        padding: 0,
-        zIndex: 6,
-      }}
-    >
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 6 }}>
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -101,6 +90,19 @@ export default function WindowsArrangeGrid({
           `,
         }}
       />
+      <div
+        style={{
+          position: "relative",
+          width: "min(100vw, 100vh)",
+          height: "min(100vw, 100vh)",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gridTemplateRows: "repeat(2, 1fr)",
+          columnGap: 0,
+          rowGap: 0,
+          padding: 0,
+        }}
+      >
       {renderList.map((w, i) => {
         const picsum = choosePicsumSrc(i);
         const camIdx = cameraTargets.includes(i) ? (i % Math.max(1, cameraImages.length)) : -1;
@@ -114,64 +116,79 @@ export default function WindowsArrangeGrid({
         const imgFilter = invert
           ? `blur(${blurNow}px) grayscale(1) invert(1) contrast(1.05)`
           : `blur(${blurNow}px) grayscale(1) contrast(1.05)`;
-        return (
-          <div
-            key={`grid_${w.id}`}
-            style={{
-              background: "rgba(231,233,238,0.56)",
-              border: "1px solid rgba(154,160,170,0.45)",
-              boxShadow: "0 8px 30px rgba(0,0,0,.25)",
-              backdropFilter: "blur(8px) saturate(1.2)",
-              WebkitBackdropFilter: "blur(8px) saturate(1.2)",
-              borderRadius: 10,
-              pointerEvents: "none",
-              boxSizing: "border-box",
-              overflow: "hidden",
-              display: "grid",
-              gridTemplateRows: "26px 1fr",
-            }}
-          >
+        if (plain) {
+          return (
             <div
+              key={`grid_${w.id}`}
               style={{
-                height: 26,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "0 8px",
-                background: "linear-gradient(to bottom, rgba(220,224,232,0.6), rgba(200,204,212,0.6))",
-                borderBottom: "1px solid rgba(154,160,170,0.45)",
-                color: "#222",
-                fontSize: 12,
-                fontWeight: 700,
+                position: "relative",
+                pointerEvents: "none",
+                overflow: "hidden",
+                borderRadius: 8,
               }}
             >
-              <span>{`window_${i + 1}`}</span>
-              <span style={{ letterSpacing: 2, fontWeight: 700 }}>— □ ×</span>
+              <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: imgFilter }} />
             </div>
-            <div className="mono-halftone" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", filter: moodStyle.filter }}>
-              {/* mood overlay */}
-              <div style={{ position: "absolute", inset: 0, background: moodStyle.overlay, mixBlendMode: "multiply", pointerEvents: "none", zIndex: 2 }} />
-              {/* track for pulse scroll */}
+          );
+        } else {
+          return (
+            <div
+              key={`grid_${w.id}`}
+              style={{
+                background: "rgba(231,233,238,0.56)",
+                border: "1px solid rgba(154,160,170,0.45)",
+                boxShadow: "0 8px 30px rgba(0,0,0,.25)",
+                backdropFilter: "blur(8px) saturate(1.2)",
+                WebkitBackdropFilter: "blur(8px) saturate(1.2)",
+                borderRadius: 10,
+                pointerEvents: "none",
+                boxSizing: "border-box",
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateRows: "26px 1fr",
+              }}
+            >
               <div
-                key={`${scrollKey}-${i}`}
                 style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: "200%",
-                  animation: pulseAnim,
+                  height: 26,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0 8px",
+                  background: "linear-gradient(to bottom, rgba(220,224,232,0.6), rgba(200,204,212,0.6))",
+                  borderBottom: "1px solid rgba(154,160,170,0.45)",
+                  color: "#222",
+                  fontSize: 12,
+                  fontWeight: 700,
                 }}
               >
-                <div style={{ animation: `blurPulse ${1600 + (i % 4) * 260}ms ease-in-out infinite`, willChange: "filter" }}>
-                  <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
-                  <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
+                <span>{`window_${i + 1}`}</span>
+                <span style={{ letterSpacing: 2, fontWeight: 700 }}>— □ ×</span>
+              </div>
+              <div className="mono-halftone" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", filter: moodStyle.filter }}>
+                <div style={{ position: "absolute", inset: 0, background: moodStyle.overlay, mixBlendMode: "multiply", pointerEvents: "none", zIndex: 2 }} />
+                <div
+                  key={`${scrollKey}-${i}`}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    height: "200%",
+                    animation: pulseAnim,
+                  }}
+                >
+                  <div style={{ animation: `blurPulse ${1600 + (i % 4) * 260}ms ease-in-out infinite`, willChange: "filter" }}>
+                    <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
+                    <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
+          );
+        }
       })}
+      </div>
     </div>
   );
 }

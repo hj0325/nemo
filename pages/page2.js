@@ -39,6 +39,8 @@ export default function Page2() {
   const [mosaic, setMosaic] = useState(false);
   const [mosaicStart, setMosaicStart] = useState(false);
   const [mosaicTargets, setMosaicTargets] = useState([]);
+  const [zoomOut, setZoomOut] = useState(false);
+  const [zoomOutStart, setZoomOutStart] = useState(false);
   const [survivors, setSurvivors] = useState([]); // indices to keep (9)
   const [targets, setTargets] = useState([]); // target rects for survivors
   // Color mood set (applied as overlay/filter to unify tone)
@@ -174,7 +176,7 @@ export default function Page2() {
     } else if (s === 1) {
       setFadeVideo(true);
       setShowWindows(false);
-      setShowPrompt(true);
+      setShowPrompt(false);
       setShowQuestion(false);
       setArranged(false);
       setClarity(0);
@@ -203,7 +205,7 @@ export default function Page2() {
     const phi = 1.61803398875;
     const ratioPalette = [1, 4/3, 3/4, 16/9, 9/16, phi, 1/phi];
     const arr = [];
-    const count = 16;
+    const count = 48; // render many OS windows for zoom-out scene
     // grid buckets to avoid clustering and to fill top-left as well
     const cols = 5, rows = 4;
     const cells = [];
@@ -567,6 +569,10 @@ export default function Page2() {
             0% { opacity: 1; transform: translate3d(0,0,0) scale(1); }
             100% { opacity: 0; transform: translate3d(-120vw,120vh,0) scale(0.92) rotate(-8deg); }
           }
+          @keyframes zoomOutLayer {
+            0% { transform: scale(1); }
+            100% { transform: scale(0.75); }
+          }
         `,
         }}
       />
@@ -577,16 +583,26 @@ export default function Page2() {
       />
       {/* Fade video to black overlay (after video ended) */}
       <FadeOverlay visible={fadeVideo} duration={600} zIndex={4} />
-      {/* Prompt message after fade */}
-      <CenterPrompt visible={showPrompt}>모바일을 확인하고 슬라이드 하여, 선택해보세요</CenterPrompt>
+      {/* Removed stage-1 prompt */}
       {/* Old modal windows montage */}
       {showWindows && !arranged && !arranging && !mosaic && (
-        <WindowsScatter
-          windows={windows}
-          clarity={clarity}
-          cameraTargets={camTargets}
-          cameraImages={camImages}
-        />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            transformOrigin: "center",
+            animation: zoomOutStart ? `zoomOutLayer 700ms cubic-bezier(0.19,1,0.22,1) forwards` : undefined,
+            transform: zoomOut && !zoomOutStart ? "scale(0.75)" : undefined,
+          }}
+        >
+          <WindowsScatter
+            windows={windows}
+            clarity={clarity}
+            cameraTargets={camTargets}
+            cameraImages={camImages}
+            paused={zoomOut}
+          />
+        </div>
       )}
       {/* Mosaic zoom-in step before final 3x3 */}
       {showWindows && !arranged && mosaic && (
@@ -594,17 +610,20 @@ export default function Page2() {
           windows={windows}
           targets4={mosaicTargets}
           start={mosaicStart}
-          durationMs={900}
+          durationMs={1200}
+          initialScale={0.75}
+          finalScale={2.0}
           clarity={clarity}
           cameraTargets={camTargets}
           cameraImages={camImages}
           onDone={() => {
-            // Pick center 3x3 from 4x4 = indices where r,c in {1,2,3} with 0-based 0..3
-            const centerIdxs = [];
-            for (let r = 1; r <= 3; r++) for (let c = 1; c <= 3; c++) centerIdxs.push(r * 4 + c);
+            // Pick center 2x2 from 4x4 (rows 1..2, cols 1..2)
+            const centerIdxs = [5, 6, 9, 10];
             setSurvivors(centerIdxs);
             setMosaic(false);
             setMosaicStart(false);
+            setZoomOut(false);
+            setZoomOutStart(false);
             setArranged(true);
           }}
         />
@@ -630,6 +649,7 @@ export default function Page2() {
           clarity={clarity}
           cameraTargets={camTargets}
           cameraImages={camImages}
+          plain
         />
       )}
       {/* Background focus overlay to make question modal stand out */}
@@ -640,9 +660,9 @@ export default function Page2() {
             inset: 0,
             pointerEvents: "none",
             zIndex: 8, // below CenterPrompt (z 9), above scatter/transition (z 6-7)
-            background: "rgba(0,0,0,0.18)",
-            backdropFilter: "blur(2.5px) saturate(1.05)",
-            WebkitBackdropFilter: "blur(2.5px) saturate(1.05)",
+            background: "rgba(0,0,0,0.12)",
+            backdropFilter: "blur(1px) saturate(1.02)",
+            WebkitBackdropFilter: "blur(1px) saturate(1.02)",
             transition: "opacity 350ms ease",
             opacity: 1,
           }}
@@ -707,11 +727,12 @@ export default function Page2() {
           </div>
         </>
       )}
-      {/* Center question box after 1s in stage 2 */}
+      {/* Center question box during scatter/transition */}
       <CenterPrompt
         visible={showWindows && !arranged}
         os
         noFade
+        raise
       >
         <div style={{ lineHeight: 1.45 }}>
           <div>당신이 원하는 휴식은 무엇인가요?</div>
@@ -719,7 +740,7 @@ export default function Page2() {
         </div>
       </CenterPrompt>
       {/* Scroll to arrange (desktop/mobile) */}
-      {showWindows && !arranged && (
+      {showWindows && !arranged && !mosaic && !zoomOutStart && !zoomOut && (
         <ScrollArrange onArrange={triggerArrange} />
       )}
       {/* Edge navigation: Prev / Next */}
@@ -729,24 +750,36 @@ export default function Page2() {
           else goToStage(Math.max(0, stage - 1));
         }}
         onNext={() => {
+          if (stage === 2 && mosaic) {
+            // prevent skipping while mosaic animation is running
+            return;
+          }
           if (stage === 2 && !arranged) {
-            // Mosaic step first
-            if (!mosaic) {
-              // build 4x4 targets that fill viewport
-              const cols = 4, rows = 4;
-              const tileW = 100 / cols;
-              const tileH = 100 / rows;
-              const tgs = [];
-              for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                  tgs.push({ left: c * tileW, top: r * tileH, width: tileW, height: tileH });
-                }
-              }
-              setMosaicTargets(tgs);
-              setMosaic(true);
-              requestAnimationFrame(() => setMosaicStart(true));
+            // Step 1: if not zooming yet, zoom-out then freeze 1s then start mosaic
+            if (!zoomOut && !mosaic) {
+              setZoomOut(true);
+              setZoomOutStart(true);
+              setTimeout(() => {
+                setZoomOutStart(false);
+                setTimeout(() => {
+                  const cols = 4, rows = 4;
+                  const tileW = 100 / cols;
+                  const tileH = 100 / rows;
+                  const tgs = [];
+                  for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                      tgs.push({ left: c * tileW, top: r * tileH, width: tileW, height: tileH });
+                    }
+                  }
+                  setMosaicTargets(tgs);
+                  setMosaic(true);
+                  requestAnimationFrame(() => setMosaicStart(true));
+                }, 1000); // freeze
+              }, 700); // zoom-out duration
               return;
             }
+            // ignore extra clicks during zoom-out
+            if (zoomOut) return;
           }
           if (stage === 2 && arranged) {
             // Persist the last used arranged image (tile 0) for house page

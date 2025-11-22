@@ -9,6 +9,8 @@ export default function WindowsMosaicTransition({
   cameraTargets = [],
   cameraImages = [],
   onDone,
+  initialScale = 1,
+  finalScale = 2.0,
 }) {
   const chooseMesySrc = (w, i) => {
     const ww = parseFloat(w.widthVw ?? parseFloat(w.width || "0"));
@@ -32,11 +34,12 @@ export default function WindowsMosaicTransition({
   const blurBase = 0.5;
   const blurNow = Math.max(0, blurBase * (1 - Math.max(0, Math.min(1, clarity))));
 
+  const animName = `mosaicZoomIn_${String(initialScale).replace('.','_')}_${String(finalScale).replace('.','_')}`;
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 7, overflow: "hidden" }}>
       <style
         dangerouslySetInnerHTML={{
-          __html: `@keyframes mosaicZoomIn { 0% { transform: scale(1); } 100% { transform: scale(1.3333); } }`,
+          __html: `@keyframes ${animName} { 0% { transform: scale(${initialScale}); } 100% { transform: scale(${finalScale}); } }`,
         }}
       />
       <div
@@ -44,7 +47,8 @@ export default function WindowsMosaicTransition({
           position: "absolute",
           inset: 0,
           transformOrigin: "center",
-          animation: start ? `mosaicZoomIn ${durationMs}ms cubic-bezier(0.19,1,0.22,1) forwards` : undefined,
+          animation: start ? `${animName} ${durationMs}ms cubic-bezier(0.19,1,0.22,1) forwards` : undefined,
+          willChange: "transform",
         }}
         onAnimationEnd={() => {
           if (typeof onDone === "function") onDone();
@@ -76,24 +80,25 @@ export default function WindowsMosaicTransition({
                 height,
                 background: "rgba(231,233,238,0.56)",
                 border: "1px solid rgba(154,160,170,0.45)",
-                borderRadius: 8,
+                borderRadius: 10,
                 overflow: "hidden",
                 transition:
                   "left 600ms cubic-bezier(0.19,1,0.22,1), top 600ms cubic-bezier(0.19,1,0.22,1), width 600ms cubic-bezier(0.19,1,0.22,1), height 600ms cubic-bezier(0.19,1,0.22,1)",
                 boxShadow: "0 8px 30px rgba(0,0,0,.18)",
+                willChange: "left, top, width, height",
               }}
             >
               <div
                 style={{
-                  height: 22,
+                  height: 26,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  padding: "0 6px",
+                  padding: "0 8px",
                   background: "linear-gradient(to bottom, rgba(220,224,232,0.6), rgba(200,204,212,0.6))",
                   borderBottom: "1px solid rgba(154,160,170,0.45)",
                   color: "#222",
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                 }}
               >
@@ -105,9 +110,9 @@ export default function WindowsMosaicTransition({
                 alt=""
                 style={{
                   position: "absolute",
-                  inset: "22px 0 0 0",
+                  inset: "26px 0 0 0",
                   width: "100%",
-                  height: "calc(100% - 22px)",
+                  height: "calc(100% - 26px)",
                   objectFit: "cover",
                   filter: imgFilter,
                 }}

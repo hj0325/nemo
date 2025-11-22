@@ -1,6 +1,6 @@
 "use client";
 
-export default function WindowsScatter({ windows, clarity = 0, cameraTargets = [], cameraImages = [] }) {
+export default function WindowsScatter({ windows, clarity = 0, cameraTargets = [], cameraImages = [], paused = false }) {
   const chooseMesySrc = (w, i) => {
     const ww = parseFloat(w.widthVw ?? parseFloat(w.width || "0"));
     const hh = parseFloat(w.heightVh ?? parseFloat(w.height || "0"));
@@ -88,6 +88,7 @@ export default function WindowsScatter({ windows, clarity = 0, cameraTargets = [
                 borderRadius: 10,
                 overflow: "hidden",
                 animation: `${w.type} ${w.duration} ${w.timing} ${w.delay} infinite ${w.direction}`,
+                animationPlayState: paused ? "paused" : "running",
                 transformOrigin: w.origin,
               }}
             >

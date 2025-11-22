@@ -1,6 +1,6 @@
 "use client";
 
-export default function CenterPrompt({ visible, children, os = false, noFade = false, title = "message" }) {
+export default function CenterPrompt({ visible, children, os = false, noFade = false, title = "message", raise = false }) {
   if (!visible) return null;
   return (
     <div
@@ -14,6 +14,17 @@ export default function CenterPrompt({ visible, children, os = false, noFade = f
         pointerEvents: "none",
       }}
     >
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes promptRaise {
+              0% { opacity: 0; transform: translateY(12px) scale(0.98); }
+              60% { opacity: 1; transform: translateY(2px) scale(1.005); }
+              100% { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `,
+        }}
+      />
       {os ? (
         <div
           style={{
@@ -25,6 +36,7 @@ export default function CenterPrompt({ visible, children, os = false, noFade = f
             WebkitBackdropFilter: "blur(8px) saturate(1.2)",
             borderRadius: 10,
             overflow: "hidden",
+            animation: raise ? "promptRaise 600ms cubic-bezier(0.19,1,0.22,1) forwards" : undefined,
           }}
         >
           <div
