@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import TextType from "./TextType";
+import DecryptedText from "./DecryptedText";
 
 type Stream = {
   text: string;
@@ -41,9 +43,9 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
     if (!mounted) return [];
     const cols = [
       { left: "6%",  align: "right",  size: 12 },
-      { left: "20%", align: "right",  size: 11 },
-      { right: "22%", align: "left", size: 11 },
-      { right: "7%",  align: "left", size: 12 },
+      { left: "13%", align: "right",  size: 11 },
+      { right: "13%", align: "left", size: 11 },
+      { right: "6%",  align: "left", size: 12 },
     ] as const;
 
     const list: Stream[] = [];
@@ -64,7 +66,7 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
           lineHeight: "1.3",
           opacity: 0.85,
         },
-        className: "tc-stream",
+        className: "tc-stream tc-typed",
         delay: i * 0.8,
         duration: 14 + i * 3,
       });
@@ -85,7 +87,7 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
         opacity: 0.9,
         whiteSpace: "normal",
       },
-      className: "tc-line tc-line-top",
+      className: "tc-line tc-line-top tc-typed",
       delay: 0.2,
       duration: 14,
     });
@@ -105,7 +107,7 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
         opacity: 0.9,
         whiteSpace: "normal",
       },
-      className: "tc-line tc-line-bottom",
+      className: "tc-line tc-line-bottom tc-typed",
       delay: 0.4,
       duration: 16,
     });
@@ -133,31 +135,70 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
             animationDuration: `${s.duration}s`,
           }}
         >
-          {s.text}
+          <span className="tc-combo">
+            {s.className?.includes("tc-typed") ? (
+              <>
+                <span className="tc-typed-layer">
+                  <TextType
+                    text={[s.text]}
+                    typingSpeed={75}
+                    pauseDuration={1500}
+                    showCursor={!s.className.includes("tc-stream")} /* 세로 스트림은 커서 숨김 */
+                    cursorCharacter="|"
+                    loop={true}
+                    className=""
+                  />
+                </span>
+                <span className="tc-decrypt-layer">
+                  <DecryptedText
+                    text={s.text}
+                    speed={60}
+                    maxIterations={18}
+                    animateOn="hover"
+                    parentClassName=""
+                    className=""
+                    encryptedClassName="tc-encrypted"
+                  />
+                </span>
+              </>
+            ) : (
+              s.text
+            )}
+          </span>
         </div>
       ))}
       <style jsx global>{`
-        @keyframes lodingRise {
-          0%   { transform: translateY(8px); opacity: .0; }
-          10%  { opacity: .85; }
-          90%  { opacity: .85; }
-          100% { transform: translateY(-8px); opacity: 0; }
+        .tc-combo {
+          position: relative;
+          display: inline-block;
         }
-        @keyframes lodingDriftX {
-          0%   { transform: translateX(0px); opacity: .0; }
-          10%  { opacity: .9; }
-          90%  { opacity: .9; }
-          100% { transform: translateX(8px); opacity: 0; }
+        .tc-typed-layer {
+          position: relative;
+          z-index: 1;
+          transition: opacity .15s linear;
         }
-        /* Opacity-only for center-aligned lines to keep translateX(-50%) intact */
-        @keyframes lodingFadeOnly {
-          0%   { opacity: .0; }
-          10%  { opacity: .9; }
-          90%  { opacity: .9; }
-          100% { opacity: 0; }
+        .tc-decrypt-layer {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+          opacity: 0;
+          transition: opacity .15s linear;
+          pointer-events: none; /* allow hover to bubble to parent */
+        }
+        /* show decrypt overlay and hide typed when parent hovered */
+        .tc-combo:hover .tc-decrypt-layer { opacity: 1; }
+        .tc-combo:hover .tc-typed-layer { opacity: 0; }
+        .tc-encrypted { opacity: .6; }
+        @keyframes lodingRiseNoFade {
+          0%   { transform: translateY(8px); }
+          100% { transform: translateY(-8px); }
+        }
+        @keyframes lodingDriftXNoFade {
+          0%   { transform: translateX(0px); }
+          100% { transform: translateX(8px); }
         }
         .tc-stream {
-          animation: lodingRise linear infinite;
+          animation: lodingRiseNoFade linear infinite;
           text-shadow: 0 0 6px rgba(255,255,255,.4);
           mix-blend-mode: screen;
           font-size: 13px; /* base, scaled by inline via --tc-scale */
@@ -167,7 +208,7 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
           -webkit-font-smoothing: antialiased;
         }
         .tc-line {
-          animation: lodingDriftX linear infinite;
+          animation: lodingDriftXNoFade linear infinite;
           text-shadow: 0 0 6px rgba(255,255,255,.35);
           mix-blend-mode: screen;
           font-size: 12px; /* base, scaled by inline via --tc-scale */
@@ -176,10 +217,10 @@ export default function TextCascade({ attachToFrame = false }: { attachToFrame?:
           text-rendering: geometricPrecision;
           -webkit-font-smoothing: antialiased;
         }
-        /* Ensure centered lines don't override translateX(-50%) */
+        /* Center lines: no drift, no fade - stay pinned dead center */
         .tc-line.tc-line-top,
         .tc-line.tc-line-bottom {
-          animation: lodingFadeOnly linear infinite;
+          animation: none;
         }
         /* no vw/vh/cqw based font-sizes; scaling is controlled only by --tc-scale */
       `}</style>

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
 import TextCascade from "./components/TextCascade";
-import CenterGuide from "./components/CenterGuide";
 
 export default function LodingPage() {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -43,7 +42,6 @@ export default function LodingPage() {
           />
           {/* Text overlay is anchored to the same frame */}
           <div className="absolute inset-0">
-            <CenterGuide />
             <TextCascade attachToFrame />
           </div>
         </div>
