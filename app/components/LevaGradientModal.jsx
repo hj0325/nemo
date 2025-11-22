@@ -3,43 +3,37 @@
 import { useEffect, useMemo, useState } from "react";
 import { Leva, useControls, useCreateStore, folder, button } from "leva";
 
-type GradientStop = {
-  id: string;
-  color: string;
-  position: number;
-};
-
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
 export default function LevaGradientModal() {
   // Casted Leva to any for passing custom store without TS friction
-  const LevaAny = Leva as any;
+  const LevaAny = Leva;
   const store = useCreateStore();
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [transparentStart, setTransparentStart] = useState<number>(80);
-  const [stops, setStops] = useState<GradientStop[]>([
+  const [isOpen, setIsOpen] = useState(false);
+  const [transparentStart, setTransparentStart] = useState(80);
+  const [stops, setStops] = useState([
     { id: uid(), color: "#191603", position: 82 },
     { id: uid(), color: "#fffef8", position: 100 },
   ]);
   // Background (WebGL) editor state
-  const [c3, setC3] = useState<string>("#000000"); // dark-ochre (black)
-  const [c4, setC4] = useState<string>("#0d0a02"); // very dark brown
-  const [c5, setC5] = useState<string>("#f6f0d5"); // light warm yellow
-  const [yellowStart, setYellowStart] = useState<number>(85.0); // %
-  const [yellowEnd, setYellowEnd] = useState<number>(92.6); // %
-  const [animAmp, setAnimAmp] = useState<number>(4.45); // %
+  const [c3, setC3] = useState("#000000"); // dark-ochre (black)
+  const [c4, setC4] = useState("#0d0a02"); // very dark brown
+  const [c5, setC5] = useState("#f6f0d5"); // light warm yellow
+  const [yellowStart, setYellowStart] = useState(85.0); // %
+  const [yellowEnd, setYellowEnd] = useState(92.6); // %
+  const [animAmp, setAnimAmp] = useState(4.45); // %
   // Coordinate overrides (explicit top/bottom band positions)
-  const [topStart, setTopStart] = useState<number>(85.0);
-  const [topEnd, setTopEnd] = useState<number>(93.0);
+  const [topStart, setTopStart] = useState(85.0);
+  const [topEnd, setTopEnd] = useState(93.0);
   // New bottom white gradient controls
-  const [bottomWhiteStart, setBottomWhiteStart] = useState<number>(7.0);
-  const [bottomWhiteEnd, setBottomWhiteEnd] = useState<number>(63.0);
-  const [bottomWhiteColor, setBottomWhiteColor] = useState<string>("#f6f0d5");
-  const [bottomAnimAmp, setBottomAnimAmp] = useState<number>(4.45);
-  const [linkBottomMotion, setLinkBottomMotion] = useState<boolean>(true);
-  const [debugAxis, setDebugAxis] = useState<boolean>(false);
+  const [bottomWhiteStart, setBottomWhiteStart] = useState(7.0);
+  const [bottomWhiteEnd, setBottomWhiteEnd] = useState(63.0);
+  const [bottomWhiteColor, setBottomWhiteColor] = useState("#f6f0d5");
+  const [bottomAnimAmp, setBottomAnimAmp] = useState(4.45);
+  const [linkBottomMotion, setLinkBottomMotion] = useState(true);
+  const [debugAxis, setDebugAxis] = useState(false);
 
   const gradientCss = useMemo(() => {
     const sorted = [...stops].sort((a, b) => a.position - b.position);
@@ -75,7 +69,7 @@ export default function LevaGradientModal() {
     window.dispatchEvent(event);
   }, [c3, c4, c5, yellowStart, yellowEnd, animAmp, topStart, topEnd, bottomWhiteStart, bottomWhiteEnd, bottomWhiteColor, bottomAnimAmp, linkBottomMotion, debugAxis]);
 
-  function updateStop(id: string, patch: Partial<GradientStop>) {
+  function updateStop(id, patch) {
     setStops((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
   function addStop() {
@@ -85,7 +79,7 @@ export default function LevaGradientModal() {
       return [...prev, { id: uid(), color: "#fff4b8", position: nextPos }];
     });
   }
-  function removeStop(id: string) {
+  function removeStop(id) {
     setStops((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   }
   function resetDefaults() {
@@ -114,44 +108,44 @@ export default function LevaGradientModal() {
 
   useControls(
     () => {
-      const schema: Record<string, any> = {
+      const schema = {
         "Fade start (%)": {
           value: transparentStart,
           min: 0,
           max: 100,
-          onChange: (v: number) => setTransparentStart(v),
+          onChange: (v) => setTransparentStart(v),
         },
         "Background (3D)": folder(
           {
             "Dark-ochre (c3)": {
               value: c3,
-              onChange: (v: string) => setC3(v),
+              onChange: (v) => setC3(v),
             },
             "Gold (c4)": {
               value: c4,
-              onChange: (v: string) => setC4(v),
+              onChange: (v) => setC4(v),
             },
             "Light yellow (c5)": {
               value: c5,
-              onChange: (v: string) => setC5(v),
+              onChange: (v) => setC5(v),
             },
             "Yellow start (%)": {
               value: yellowStart,
               min: 80,
               max: 99.5,
-              onChange: (v: number) => setYellowStart(v),
+              onChange: (v) => setYellowStart(v),
             },
             "Yellow end (%)": {
               value: yellowEnd,
               min: 81,
               max: 100,
-              onChange: (v: number) => setYellowEnd(v),
+              onChange: (v) => setYellowEnd(v),
             },
             "Breath amp (%)": {
               value: animAmp,
               min: 0,
               max: 5,
-              onChange: (v: number) => setAnimAmp(v),
+              onChange: (v) => setAnimAmp(v),
             },
             Coordinates: folder(
               {
@@ -159,39 +153,39 @@ export default function LevaGradientModal() {
                   value: topStart,
                   min: 0,
                   max: 100,
-                  onChange: (v: number) => setTopStart(v),
+                  onChange: (v) => setTopStart(v),
                 },
                 "Top end (%)": {
                   value: topEnd,
                   min: 0,
                   max: 100,
-                  onChange: (v: number) => setTopEnd(v),
+                  onChange: (v) => setTopEnd(v),
                 },
                 "Bottom white start (%)": {
                   value: bottomWhiteStart,
                   min: 0,
                   max: 100,
-                  onChange: (v: number) => setBottomWhiteStart(v),
+                  onChange: (v) => setBottomWhiteStart(v),
                 },
                 "Bottom white end (%)": {
                   value: bottomWhiteEnd,
                   min: 0,
                   max: 100,
-                  onChange: (v: number) => setBottomWhiteEnd(v),
+                  onChange: (v) => setBottomWhiteEnd(v),
                 },
                 "Bottom white color": {
                   value: bottomWhiteColor,
-                  onChange: (v: string) => setBottomWhiteColor(v),
+                  onChange: (v) => setBottomWhiteColor(v),
                 },
                 "Link bottom motion to top": {
                   value: linkBottomMotion,
-                  onChange: (v: boolean) => setLinkBottomMotion(v),
+                  onChange: (v) => setLinkBottomMotion(v),
                 },
                 "Bottom breath amp (%)": {
                   value: bottomAnimAmp,
                   min: 0,
                   max: 5,
-                  onChange: (v: number) => setBottomAnimAmp(v),
+                  onChange: (v) => setBottomAnimAmp(v),
                 },
               },
               { collapsed: true }
@@ -200,7 +194,7 @@ export default function LevaGradientModal() {
               {
                 "Show debug axis": {
                   value: debugAxis,
-                  onChange: (v: boolean) => setDebugAxis(v),
+                  onChange: (v) => setDebugAxis(v),
                 },
               },
               { collapsed: false }
@@ -223,13 +217,13 @@ export default function LevaGradientModal() {
           {
             [`Color ${index + 1}`]: {
               value: s.color,
-              onChange: (v: string) => updateStop(s.id, { color: v }),
+              onChange: (v) => updateStop(s.id, { color: v }),
             },
             [`Position ${index + 1}`]: {
               value: s.position,
               min: 0,
               max: 100,
-              onChange: (v: number) => updateStop(s.id, { position: v }),
+              onChange: (v) => updateStop(s.id, { position: v }),
             },
             [`Remove ${index + 1}`]: button(() => removeStop(s.id)),
           },
@@ -267,7 +261,7 @@ export default function LevaGradientModal() {
             store={store}
             collapsed={false}
             fill={false}
-            theme={{ colors: { elevation2: "#1a1a1a", accent1: "#f4d24b" } } as any}
+            theme={{ colors: { elevation2: "#1a1a1a", accent1: "#f4d24b" } }}
           />
           <button
             onClick={() => setIsOpen(false)}

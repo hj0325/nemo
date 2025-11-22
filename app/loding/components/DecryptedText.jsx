@@ -3,26 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { motion } from "motion/react";
 
-type Props = {
-  text: string;
-  speed?: number;
-  maxIterations?: number;
-  sequential?: boolean;
-  revealDirection?: "start" | "end" | "center";
-  useOriginalCharsOnly?: boolean;
-  characters?: string;
-  className?: string;
-  parentClassName?: string;
-  encryptedClassName?: string;
-  animateOn?: "hover" | "view" | "both";
-  [key: string]: any;
-};
-
 const styles = {
   wrapper: {
     display: "inline-block",
     whiteSpace: "pre-wrap",
-  } as React.CSSProperties,
+  },
   srOnly: {
     position: "absolute",
     width: "1px",
@@ -32,7 +17,7 @@ const styles = {
     overflow: "hidden",
     clip: "rect(0,0,0,0)",
     border: 0,
-  } as React.CSSProperties,
+  },
 };
 
 export default function DecryptedText({
@@ -48,19 +33,19 @@ export default function DecryptedText({
   encryptedClassName = "",
   animateOn = "hover",
   ...props
-}: Props) {
+}) {
   const [displayText, setDisplayText] = useState(text);
   const [isHovering, setIsHovering] = useState(false);
   const [isScrambling, setIsScrambling] = useState(false);
-  const [revealedIndices, setRevealedIndices] = useState<Set<number>>(new Set());
+  const [revealedIndices, setRevealedIndices] = useState(new Set());
   const [hasAnimated, setHasAnimated] = useState(false);
-  const containerRef = useRef<HTMLSpanElement | null>(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    let interval: any;
+    let interval;
     let currentIteration = 0;
 
-    const getNextIndex = (revealedSet: Set<number>) => {
+    const getNextIndex = (revealedSet) => {
       const textLength = text.length;
       switch (revealDirection) {
         case "start":
@@ -84,7 +69,7 @@ export default function DecryptedText({
       ? Array.from(new Set(text.split(""))).filter((char) => char !== " ")
       : characters.split("");
 
-    const shuffleText = (originalText: string, currentRevealed: Set<number>) => {
+    const shuffleText = (originalText, currentRevealed) => {
       if (useOriginalCharsOnly) {
         const positions = originalText.split("").map((char, i) => ({
           char,
@@ -158,7 +143,7 @@ export default function DecryptedText({
 
   useEffect(() => {
     if (animateOn !== "view" && animateOn !== "both") return;
-    const observerCallback = (entries: IntersectionObserverEntry[]) => {
+    const observerCallback = (entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting && !hasAnimated) {
           setIsHovering(true);
@@ -191,5 +176,6 @@ export default function DecryptedText({
     </motion.span>
   );
 }
+
 
 

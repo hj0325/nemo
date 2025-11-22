@@ -2,23 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type GradientStop = {
-  id: string;
-  color: string; // hex or rgba
-  position: number; // 0 - 100 (%)
-};
-
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
 export default function GradientControls() {
-  const [transparentStart, setTransparentStart] = useState<number>(71);
-  const [stops, setStops] = useState<GradientStop[]>([
+  const [transparentStart, setTransparentStart] = useState(71);
+  const [stops, setStops] = useState([
     { id: uid(), color: "#373215", position: 82 },
     { id: uid(), color: "#fff4b8", position: 100 },
   ]);
-  const [open, setOpen] = useState<boolean>(true);
+  const [open, setOpen] = useState(true);
 
   const gradientCss = useMemo(() => {
     const sorted = [...stops].sort((a, b) => a.position - b.position);
@@ -33,7 +27,7 @@ export default function GradientControls() {
     }
   }, [gradientCss]);
 
-  function updateStop(id: string, patch: Partial<GradientStop>) {
+  function updateStop(id, patch) {
     setStops((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
@@ -42,7 +36,7 @@ export default function GradientControls() {
     setStops((prev) => [...prev, { id: uid(), color: "#fff4b8", position: lastPos }]);
   }
 
-  function removeStop(id: string) {
+  function removeStop(id) {
     setStops((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   }
 

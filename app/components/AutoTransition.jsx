@@ -2,14 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Props = {
-  delayMs?: number;
-  durationMs?: number;
-};
-
-export default function AutoTransition({ delayMs = 5000, durationMs = 1200 }: Props) {
-  const [showOverlay, setShowOverlay] = useState<boolean>(false);
-  const started = useRef<boolean>(false);
+export default function AutoTransition({ delayMs = 5000, durationMs = 1200 } = {}) {
+  const [showOverlay, setShowOverlay] = useState(false);
+  const started = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => {

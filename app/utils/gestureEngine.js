@@ -1,23 +1,15 @@
 "use client";
 
-export type GestureEngineOptions = {
-  onUpdate: (value01: number) => void;
-  friction?: number;      // per-frame damping (0..1), e.g. 0.08
-  minVelocity?: number;   // stop threshold, e.g. 0.00005
-  wheelScale?: number;    // wheel deltaY -> velocity
-  touchScale?: number;    // touch dy -> velocity
-};
-
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
 export class GestureEngine {
-  private value = 0;         // 0..1
-  private velocity = 0;      // arbitrary units/frame
-  private raf = 0;
-  private running = false;
-  private opts: Required<GestureEngineOptions>;
+  value = 0;         // 0..1
+  velocity = 0;      // arbitrary units/frame
+  raf = 0;
+  running = false;
+  opts;
 
-  constructor(opts: GestureEngineOptions) {
+  constructor(opts) {
     this.opts = {
       friction: opts.friction ?? 0.08,
       minVelocity: opts.minVelocity ?? 0.00005,
@@ -27,33 +19,33 @@ export class GestureEngine {
     };
   }
 
-  setValue01(next: number) {
+  setValue01(next) {
     this.value = clamp01(next);
     this.opts.onUpdate(this.value);
   }
 
-  addWheel(deltaY: number) {
+  addWheel(deltaY) {
     this.velocity += deltaY * this.opts.wheelScale;
     this.start();
   }
 
-  addTouchDy(dy: number) {
+  addTouchDy(dy) {
     this.velocity += dy * this.opts.touchScale;
     this.start();
   }
 
-  private start() {
+  start() {
     if (this.running) return;
     this.running = true;
     this.raf = requestAnimationFrame(this.step);
   }
 
-  private stop() {
+  stop() {
     this.running = false;
     if (this.raf) cancelAnimationFrame(this.raf);
   }
 
-  private step = () => {
+  step = () => {
     // integrate velocity
     this.value = clamp01(this.value + this.velocity);
     this.opts.onUpdate(this.value);
@@ -71,5 +63,3 @@ export class GestureEngine {
     this.stop();
   }
 }
-
-

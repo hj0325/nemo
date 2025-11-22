@@ -21,16 +21,16 @@ export default function IntroSequence() {
       return () => clearTimeout(t2);
     }, 6000);
 
-    function onProgress(e: Event) {
-      const v = (e as CustomEvent).detail as number;
+    function onProgress(e) {
+      const v = (e).detail;
       if (typeof v === "number" && v > 0.001) {
         setShowCenterHint(false);
       }
     }
-    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
+    window.addEventListener("bg-gradient:progress", onProgress);
     return () => {
       clearTimeout(t1);
-      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
+      window.removeEventListener("bg-gradient:progress", onProgress);
     };
   }, []);
 
@@ -47,7 +47,7 @@ export default function IntroSequence() {
               priority
               className="fade-in-3s -mt-6 mb-2"
             />
-            <p className="fade-in-delayed text-white/90 text-[14px] sm:text-[14px] leading-snug max-w-[34ch] whitespace-pre-line break-keep" style={{ textWrap: "balance" } as any}>
+            <p className="fade-in-delayed text-white/90 text-[14px] sm:text-[14px] leading-snug max-w-[34ch] whitespace-pre-line break-keep" style={{ textWrap: "balance" }}>
               네모나게 각진 세상 속,{"\n"}
               나만의 휴식의 틈이 필요하신가요?{"\n"}
               화면을 스크롤 하며 여러분만의 ‘틈’의 창을 만들어보세요.

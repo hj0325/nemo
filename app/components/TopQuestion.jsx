@@ -6,8 +6,8 @@ export default function TopQuestion() {
   const [show, setShow] = useState(false);
   // Start with the former 3rd question as the first
   const [text, setText] = useState("휴식의 순간, 당신은 어떤 감정을 느끼고 싶나요?");
-  const [stage, setStage] = useState<1 | 2 | 3>(1);
-  const currentStageRef = useRef<1 | 2 | 3>(1);
+  const [stage, setStage] = useState(1);
+  const currentStageRef = useRef(1);
 
   useEffect(() => {
     // keep ref in sync to avoid stale closure in event handlers
@@ -17,8 +17,8 @@ export default function TopQuestion() {
   useEffect(() => {
     // New flow: initial background logic should be "stage3" random calm palette
     window.dispatchEvent(new CustomEvent("bg-gradient:stage3"));
-    function onProgress(e: Event) {
-      const v = (e as CustomEvent).detail as number;
+    function onProgress(e) {
+      const v = (e).detail;
       if (typeof v === "number" && v > 0.001) setShow(true);
     }
     function onSelect() {
@@ -53,11 +53,11 @@ export default function TopQuestion() {
         }
       }, 1100);
     }
-    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
-    window.addEventListener("bg-gradient:select", onSelect as EventListener);
+    window.addEventListener("bg-gradient:progress", onProgress);
+    window.addEventListener("bg-gradient:select", onSelect);
     return () => {
-      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
-      window.removeEventListener("bg-gradient:select", onSelect as EventListener);
+      window.removeEventListener("bg-gradient:progress", onProgress);
+      window.removeEventListener("bg-gradient:select", onSelect);
     };
   }, []);
 

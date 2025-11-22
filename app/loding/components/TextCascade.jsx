@@ -4,15 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import TextType from "./TextType";
 import DecryptedText from "./DecryptedText";
 
-type Stream = {
-  text: string;
-  style: React.CSSProperties;
-  className?: string;
-  delay: number;
-  duration: number;
-};
-
-function makeSentence(): string {
+function makeSentence() {
   const subjects = [
     "Light", "Shadow", "Waves", "Breath", "Silence", "Air", "Dust", "Echo",
     "Lines", "Clouds", "Time", "Space"
@@ -29,26 +21,26 @@ function makeSentence(): string {
     "ease", "healing", "clarity", "simple joy", "warmth", "gentle focus",
     "slow time", "soft balance", "light and shade", "quiet wonder"
   ];
-  function pick<T>(arr: T[]) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   return `${pick(subjects)} ${pick(verbs)} ${pick(phrases)}, ${pick(feelings)}.`;
 }
 
-export default function TextCascade({ attachToFrame = false }: { attachToFrame?: boolean }) {
+export default function TextCascade({ attachToFrame = false } = {}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const streams = useMemo<Stream[]>(() => {
+  const streams = useMemo(() => {
     if (!mounted) return [];
     const cols = [
       { left: "6%",  align: "right",  size: 12 },
       { left: "13%", align: "right",  size: 11 },
       { right: "13%", align: "left", size: 11 },
       { right: "6%",  align: "left", size: 12 },
-    ] as const;
+    ];
 
-    const list: Stream[] = [];
+    const list = [];
 
     // vertical streams (left/right)
     cols.forEach((c, i) => {

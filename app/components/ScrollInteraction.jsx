@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import { GestureEngine } from "../utils/gestureEngine";
 
 export default function ScrollInteraction() {
-  const engineRef = useRef<GestureEngine | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const enabledRef = useRef<boolean>(false);
+  const engineRef = useRef(null);
+  const touchStartY = useRef(null);
+  const enabledRef = useRef(false);
 
   useEffect(() => {
     engineRef.current = new GestureEngine({
@@ -24,9 +24,9 @@ export default function ScrollInteraction() {
     function onEnable() {
       enabledRef.current = true;
     }
-    window.addEventListener("bg-gradient:enable-scroll", onEnable as EventListener);
+    window.addEventListener("bg-gradient:enable-scroll", onEnable);
 
-    function onWheel(e: WheelEvent) {
+    function onWheel(e) {
       if (!enabledRef.current) return;
       engineRef.current?.addWheel(e.deltaY);
       // also emit a continuous phase delta so color cycles can continue beyond 0..1
@@ -35,11 +35,11 @@ export default function ScrollInteraction() {
         new CustomEvent("bg-gradient:phase", { detail: e.deltaY * PHASE_WHEEL })
       );
     }
-    function onTouchStart(e: TouchEvent) {
+    function onTouchStart(e) {
       if (!enabledRef.current) return;
       touchStartY.current = e.touches[0]?.clientY ?? null;
     }
-    function onTouchMove(e: TouchEvent) {
+    function onTouchMove(e) {
       if (!enabledRef.current) return;
       if (touchStartY.current == null) return;
       const currentY = e.touches[0]?.clientY ?? touchStartY.current;
@@ -58,19 +58,19 @@ export default function ScrollInteraction() {
     function onDisable() {
       enabledRef.current = false;
     }
-    window.addEventListener("bg-gradient:disable-scroll", onDisable as EventListener);
+    window.addEventListener("bg-gradient:disable-scroll", onDisable);
 
     window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("touchstart", onTouchStart, { passive: true });
     window.addEventListener("touchmove", onTouchMove, { passive: true });
     window.addEventListener("touchend", onTouchEnd, { passive: true });
     return () => {
-      window.removeEventListener("bg-gradient:enable-scroll", onEnable as EventListener);
-      window.removeEventListener("bg-gradient:disable-scroll", onDisable as EventListener);
-      window.removeEventListener("wheel", onWheel as EventListener);
-      window.removeEventListener("touchstart", onTouchStart as EventListener);
-      window.removeEventListener("touchmove", onTouchMove as EventListener);
-      window.removeEventListener("touchend", onTouchEnd as EventListener);
+      window.removeEventListener("bg-gradient:enable-scroll", onEnable);
+      window.removeEventListener("bg-gradient:disable-scroll", onDisable);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
       engineRef.current?.dispose();
       engineRef.current = null;
     };

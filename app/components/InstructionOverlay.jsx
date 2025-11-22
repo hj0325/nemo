@@ -7,14 +7,14 @@ export default function InstructionOverlay() {
 
   useEffect(() => {
     const timer = setTimeout(() => setShow(true), 3000); // 모든 요소 등장 후 3초 뒤 표시
-    function onProgress(e: Event) {
-      const v = (e as CustomEvent).detail as number;
+    function onProgress(e) {
+      const v = (e).detail;
       if (typeof v === "number" && v > 0.001) setShow(false); // 스크롤 시작되면 숨김
     }
-    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
+    window.addEventListener("bg-gradient:progress", onProgress);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
+      window.removeEventListener("bg-gradient:progress", onProgress);
     };
   }, []);
 

@@ -10,9 +10,9 @@ export default function FinalScreen() {
     function onFinal() {
       setShow(true);
     }
-    window.addEventListener("bg-gradient:final", onFinal as EventListener);
+    window.addEventListener("bg-gradient:final", onFinal);
     return () => {
-      window.removeEventListener("bg-gradient:final", onFinal as EventListener);
+      window.removeEventListener("bg-gradient:final", onFinal);
     };
   }, []);
 
@@ -28,7 +28,7 @@ export default function FinalScreen() {
           priority
           className="fade-in-1s -mt-6 mb-2"
         />
-        <p className="fade-in-1s text-white/90 text-[14px] sm:text-[14px] leading-snug max-w-[34ch] whitespace-pre-line break-keep" style={{ textWrap: "balance" } as any}>
+        <p className="fade-in-1s text-white/90 text-[14px] sm:text-[14px] leading-snug max-w-[34ch] whitespace-pre-line break-keep" style={{ textWrap: "balance" }}>
           창문에 들어나는 당신의 틈을 보며 휴식을 느끼세요
         </p>
       </div>

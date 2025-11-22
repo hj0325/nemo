@@ -6,8 +6,8 @@ export default function SelectButton() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    function onProgress(e: Event) {
-      const v = (e as CustomEvent).detail as number;
+    function onProgress(e) {
+      const v = (e).detail;
       if (typeof v === "number" && v > 0.001) setShow(true);
     }
     function onSelect() {
@@ -18,13 +18,13 @@ export default function SelectButton() {
       // hide button on final screen
       setShow(false);
     }
-    window.addEventListener("bg-gradient:progress", onProgress as EventListener);
-    window.addEventListener("bg-gradient:select", onSelect as EventListener);
-    window.addEventListener("bg-gradient:final", onFinal as EventListener);
+    window.addEventListener("bg-gradient:progress", onProgress);
+    window.addEventListener("bg-gradient:select", onSelect);
+    window.addEventListener("bg-gradient:final", onFinal);
     return () => {
-      window.removeEventListener("bg-gradient:progress", onProgress as EventListener);
-      window.removeEventListener("bg-gradient:select", onSelect as EventListener);
-      window.removeEventListener("bg-gradient:final", onFinal as EventListener);
+      window.removeEventListener("bg-gradient:progress", onProgress);
+      window.removeEventListener("bg-gradient:select", onSelect);
+      window.removeEventListener("bg-gradient:final", onFinal);
     };
   }, []);
 

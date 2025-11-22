@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import TextCascade from "./components/TextCascade";
 
 export default function LodingPage() {
-  const frameRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef(null);
 
   useEffect(() => {
     const el = frameRef.current;

@@ -4,30 +4,6 @@ import { useEffect, useRef, useState, createElement, useMemo, useCallback } from
 import { gsap } from "gsap";
 import "./TextType.css";
 
-type VariableSpeed = { min: number; max: number };
-
-type Props = {
-  text: string | string[];
-  as?: any;
-  typingSpeed?: number;
-  initialDelay?: number;
-  pauseDuration?: number;
-  deletingSpeed?: number;
-  loop?: boolean;
-  className?: string;
-  showCursor?: boolean;
-  hideCursorWhileTyping?: boolean;
-  cursorCharacter?: string;
-  cursorClassName?: string;
-  cursorBlinkDuration?: number;
-  textColors?: string[];
-  variableSpeed?: VariableSpeed;
-  onSentenceComplete?: (sentence: string, index: number) => void;
-  startOnVisible?: boolean;
-  reverseMode?: boolean;
-  [key: string]: any;
-};
-
 export default function TextType({
   text,
   as: Component = "div",
@@ -48,14 +24,14 @@ export default function TextType({
   startOnVisible = false,
   reverseMode = false,
   ...props
-}: Props) {
+}) {
   const [displayedText, setDisplayedText] = useState("");
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(!startOnVisible);
-  const cursorRef = useRef<HTMLSpanElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const cursorRef = useRef(null);
+  const containerRef = useRef(null);
   const textArray = useMemo(() => (Array.isArray(text) ? text : [text]), [text]);
 
   const getRandomSpeed = useCallback(() => {
@@ -100,7 +76,7 @@ export default function TextType({
 
   useEffect(() => {
     if (!isVisible) return;
-    let timeout: any;
+    let timeout;
     const currentText = textArray[currentTextIndex] || "";
     const processedText = reverseMode ? currentText.split("").reverse().join("") : currentText;
 
@@ -185,5 +161,6 @@ export default function TextType({
     )
   );
 }
+
 
 
