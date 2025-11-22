@@ -1,11 +1,11 @@
 import Image from "next/image";
-import LevaGradientModal from "./components/LevaGradientModal";
-import ThreeBackground from "./components/ThreeBackground";
-import ScrollInteraction from "./components/ScrollInteraction";
-import IntroSequence from "./components/IntroSequence";
-import TopQuestion from "./components/TopQuestion";
-import SelectButton from "./components/SelectButton";
-import SelectionFlashOverlay from "./components/SelectionFlashOverlay";
+import LevaGradientModal from "./components/common/LevaGradientModal";
+import ThreeBackground from "./components/common/ThreeBackground";
+import ScrollInteraction from "./components/common/ScrollInteraction";
+import IntroSequence from "./(main)/components/IntroSequence";
+import TopQuestion from "./components/common/TopQuestion";
+import SelectButton from "./components/common/SelectButton";
+import SelectionFlashOverlay from "./components/common/SelectionFlashOverlay";
 import FinalScreen from "./components/FinalScreen";
 
 export default function Home() {
