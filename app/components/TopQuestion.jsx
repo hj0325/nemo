@@ -8,6 +8,7 @@ export default function TopQuestion() {
   const [text, setText] = useState("휴식의 순간, 당신은 어떤 감정을 느끼고 싶나요?");
   const [stage, setStage] = useState(1);
   const currentStageRef = useRef(1);
+  const finalizedRef = useRef(false); // prevent re-show after final
 
   useEffect(() => {
     // keep ref in sync to avoid stale closure in event handlers
@@ -18,6 +19,7 @@ export default function TopQuestion() {
     // New flow: initial background logic should be "stage3" random calm palette
     window.dispatchEvent(new CustomEvent("bg-gradient:stage3"));
     function onProgress(e) {
+      if (finalizedRef.current) return; // do not show again after final
       const v = (e).detail;
       if (typeof v === "number" && v > 0.001) setShow(true);
     }
@@ -46,6 +48,7 @@ export default function TopQuestion() {
         } else if (s === 3) {
           // final confirm on stage 3: show final screen (no scroll)
           setShow(false);
+          finalizedRef.current = true;
           window.dispatchEvent(new CustomEvent("bg-gradient:disable-scroll"));
           window.dispatchEvent(new CustomEvent("bg-gradient:final"));
         } else {
@@ -53,11 +56,17 @@ export default function TopQuestion() {
         }
       }, 1100);
     }
+    function onFinal() {
+      finalizedRef.current = true;
+      setShow(false);
+    }
     window.addEventListener("bg-gradient:progress", onProgress);
     window.addEventListener("bg-gradient:select", onSelect);
+    window.addEventListener("bg-gradient:final", onFinal);
     return () => {
       window.removeEventListener("bg-gradient:progress", onProgress);
       window.removeEventListener("bg-gradient:select", onSelect);
+      window.removeEventListener("bg-gradient:final", onFinal);
     };
   }, []);
 

@@ -489,6 +489,7 @@ export default function ThreeBackground() {
     let stage3ProgressStart = 0;
     let stage3PhaseStart = 0;
     let finalTween = false; // transitioning to default palette for final screen
+    let isFinal = false;    // hard-lock to initial palette on final screen
     // stage1 (base palette) hold state: keep selected colors until movement after entering stage1
     let stage1HoldActive = false;
     let stage1HoldProgressStart = 0;
@@ -602,6 +603,7 @@ export default function ThreeBackground() {
       stage2 = false;
       stage3 = false;
       finalTween = true;
+      isFinal = true;
       paletteLocked = true; // freeze dynamic updates during tween
       captureFrom();
       toCols.u_c0 = initSnapshot.c0; toCols.u_c1 = initSnapshot.c1; toCols.u_c2 = initSnapshot.c2;
@@ -611,6 +613,16 @@ export default function ThreeBackground() {
       tweenStart = performance.now();
       tweenDur = 1200;
       tweenActive = true;
+      // Apply immediately as well (avoid any stale colors before tween completes)
+      uniforms.u_c0.value.setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
+      uniforms.u_c1.value.setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
+      uniforms.u_c2.value.setRGB(initSnapshot.c2[0], initSnapshot.c2[1], initSnapshot.c2[2]);
+      uniforms.u_c3.value.setRGB(initSnapshot.c3[0], initSnapshot.c3[1], initSnapshot.c3[2]);
+      uniforms.u_c4.value.setRGB(initSnapshot.c4[0], initSnapshot.c4[1], initSnapshot.c4[2]);
+      uniforms.u_c5.value.setRGB(initSnapshot.c5[0], initSnapshot.c5[1], initSnapshot.c5[2]);
+      uniforms.u_bottomWhiteColor.value.setRGB(initSnapshot.bottom[0], initSnapshot.bottom[1], initSnapshot.bottom[2]);
+      uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
+      uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
     }
     window.addEventListener("bg-gradient:final", onFinal);
     function animate() {
@@ -618,6 +630,18 @@ export default function ThreeBackground() {
       // smooth approach to target progress for natural transition (single lerp in Three)
       scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.08;
       uniforms.u_scroll.value = scrollDisplayed;
+      // Hard lock to initial palette on final screen
+      if (isFinal) {
+        uniforms.u_c0.value.setRGB(initSnapshot.c0[0], initSnapshot.c0[1], initSnapshot.c0[2]);
+        uniforms.u_c1.value.setRGB(initSnapshot.c1[0], initSnapshot.c1[1], initSnapshot.c1[2]);
+        uniforms.u_c2.value.setRGB(initSnapshot.c2[0], initSnapshot.c2[1], initSnapshot.c2[2]);
+        uniforms.u_c3.value.setRGB(initSnapshot.c3[0], initSnapshot.c3[1], initSnapshot.c3[2]);
+        uniforms.u_c4.value.setRGB(initSnapshot.c4[0], initSnapshot.c4[1], initSnapshot.c4[2]);
+        uniforms.u_c5.value.setRGB(initSnapshot.c5[0], initSnapshot.c5[1], initSnapshot.c5[2]);
+        uniforms.u_bottomWhiteColor.value.setRGB(initSnapshot.bottom[0], initSnapshot.bottom[1], initSnapshot.bottom[2]);
+        uniforms.u_bottomWhiteStart.value = initSnapshot.bwStart;
+        uniforms.u_bottomWhiteEnd.value = initSnapshot.bwEnd;
+      }
       // Random-like palette driven by scroll progress (segment blend)
       const segments = stage3 ? 12.0 : (stage2 ? 9.0 : 8.0);
       const sVal = (scrollDisplayed + phaseAccum) * segments;

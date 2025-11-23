@@ -1,22 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export default function SelectButton() {
   const [show, setShow] = useState(false);
+  const finalizedRef = useRef(false);
 
   useEffect(() => {
     function onProgress(e) {
+      if (finalizedRef.current) return;
       const v = (e).detail;
       if (typeof v === "number" && v > 0.001) setShow(true);
     }
     function onSelect() {
+      if (finalizedRef.current) return;
       // keep visible after selection as well (no change)
       setShow(true);
     }
     function onFinal() {
       // hide button on final screen
       setShow(false);
+      finalizedRef.current = true;
     }
     window.addEventListener("bg-gradient:progress", onProgress);
     window.addEventListener("bg-gradient:select", onSelect);

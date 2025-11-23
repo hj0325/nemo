@@ -1,6 +1,5 @@
-"use client";
 import { useEffect, useRef } from "react";
-import TextCascade from "./components/TextCascade";
+import TextCascade from "../app/loding/components/TextCascade";
 
 export default function LodingPage() {
   const frameRef = useRef(null);
@@ -10,7 +9,7 @@ export default function LodingPage() {
     if (!el) return;
     const setVars = () => {
       const rect = el.getBoundingClientRect();
-      const scale = Math.min(1.8, Math.max(0.8, rect.width / 1280)); // base 1280px width
+      const scale = Math.min(1.8, Math.max(0.8, rect.width / 1280));
       el.style.setProperty("--frame-w", `${rect.width}px`);
       el.style.setProperty("--frame-h", `${rect.height}px`);
       el.style.setProperty("--frame-min", `${Math.min(rect.width, rect.height)}px`);
@@ -28,7 +27,6 @@ export default function LodingPage() {
 
   return (
     <main className="min-h-screen w-full bg-black">
-      {/* Center a 16:9 frame that always fits inside the viewport */}
       <div className="fixed inset-0 z-0 flex items-center justify-center">
         <div ref={frameRef} className="loding-frame">
           <video
@@ -40,29 +38,25 @@ export default function LodingPage() {
             playsInline
             preload="auto"
           />
-          {/* Text overlay is anchored to the same frame */}
           <div className="absolute inset-0">
             <TextCascade attachToFrame />
           </div>
         </div>
       </div>
       <style jsx global>{`
-        /* 16:9 frame that fits fully in any viewport */
         .loding-frame {
           position: relative;
           width: 100vw;
-          height: 56.25vw; /* 9/16 */
+          height: 56.25vw;
           max-height: 100vh;
-          max-width: 177.78vh; /* 16/9 */
+          max-width: 177.78vh;
           background-color: #000;
           box-shadow: 0 0 80px rgba(0,0,0,.6);
-          /* Make this a container so children can use container-relative units */
           container-type: size;
         }
       `}</style>
     </main>
   );
 }
-
 
 

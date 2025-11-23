@@ -12,6 +12,7 @@ export default function LevaGradientModal() {
   const LevaAny = Leva;
   const store = useCreateStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [showTrigger, setShowTrigger] = useState(true); // hide trigger on final screen
   const [transparentStart, setTransparentStart] = useState(80);
   const [stops, setStops] = useState([
     { id: uid(), color: "#191603", position: 82 },
@@ -236,10 +237,20 @@ export default function LevaGradientModal() {
     [stops, transparentStart, c3, c4, c5, yellowStart, yellowEnd, animAmp]
   );
 
+  // Hide editor trigger and close panel on final screen
+  useEffect(() => {
+    function onFinal() {
+      setIsOpen(false);
+      setShowTrigger(false);
+    }
+    window.addEventListener("bg-gradient:final", onFinal);
+    return () => window.removeEventListener("bg-gradient:final", onFinal);
+  }, []);
+
   return (
     <>
       {/* Open button */}
-      {!isOpen && (
+      {!isOpen && showTrigger && (
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-5 right-5 z-40 rounded-full bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 backdrop-blur-md border border-white/10"
